@@ -143,8 +143,6 @@
     const potEl = $("pot").querySelector("[data-num]");
     potEl.dataset.target = s.pot;
     $("category").textContent = s.fieldTitle || (s.phase === "wheel" ? "KOŁO" : "AWANTURA O KASĘ");
-    // The question card names the category itself — save the space on small phones.
-    $("category").hidden = s.phase === "question";
     // stage panel
     $("stage").innerHTML = panel(s);
     settleNums(document.body);
@@ -193,9 +191,10 @@
       ? `<div class="answers">${q.answers.map((a, i) => `<div class="answer"><span class="chip led">${"ABCD"[i]}</span>${esc(a)}</div>`).join("")}</div>`
       : "";
     return `<div class="qtop ${tc}">
-        <div class="who"><span class="label">${esc(q.category)}</span><b>${who}</b><span class="label">${q.timerRunning ? "CZAS" : t === 0 ? "KONIEC CZASU" : "PAUZA"}</span></div>
+        <div class="who"><b>${who}</b><span class="label">${q.hintOffer ? "ZEGAR STOI" : q.timerRunning ? "CZAS" : t === 0 ? "KONIEC CZASU" : "PAUZA"}</span></div>
         <div class="timer led ${timerCls}">${t}</div>
       </div>
+      ${q.hintOffer ? `<div class="haggle"><span>TARGUJEMY PODPOWIEDŹ</span><b class="led">${q.hintOffer} ZŁ</b></div>` : ""}
       <div class="q ${tc} ${q.duel ? "duel" : ""}" style="${q.duel ? "--tc:#000" : ""}">
         <div class="text">${esc(q.text)}</div>${answers}
       </div>`;

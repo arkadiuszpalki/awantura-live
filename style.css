@@ -154,3 +154,6 @@ body {
   .pot { height: 46px; } .pot .num { font-size: 26px; }
   .q .text { font-size: 18px; padding: 16px 12px; }
 }
+.haggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 56px; padding: 0 16px;
+  background: var(--ink); color: var(--bg); font-weight: 700; letter-spacing: .08em; animation: blink 1.2s infinite; }
+.haggle b { font-size: 28px; font-weight: 400; }
