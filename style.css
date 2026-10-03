@@ -1,0 +1,148 @@
+/* Awantura o kasę — live view for players. Same look as the app:
+   iOS system colours, OLED black / white, LED font, flat grid, 1 px lines. */
+@font-face {
+  font-family: "LED";
+  src: url("fonts/led-dot-matrix.woff2") format("woff2");
+  font-display: block;
+}
+
+:root {
+  --bg: #ffffff; --ink: #000000; --ink2: #636366; --line: #8e8e93; --soft: #c6c6c8;
+  --pot: #f2f2f7; --danger: #d70015; --danger-fill: #ffe5e3;
+  --blue: #007aff; --green: #34c759; --yellow: #ffcc00; --masters: #000000;
+  --blue-l: #0055b3; --green-l: #1a642c; --yellow-l: #665200; --masters-l: #000000;
+  --masters-edge: #000000;
+  --glow: none;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000; --ink: #ffffff; --ink2: #8d8d93; --line: #636366; --soft: #38383a;
+    --pot: #1c1c1e; --danger: #ff453a; --danger-fill: #3a0f0b;
+    --blue: #0a84ff; --green: #30d158; --yellow: #ffd60a;
+    --blue-l: #3b9dff; --green-l: #30d158; --yellow-l: #ffd60a; --masters-l: #ffffff;
+    --masters-edge: #8e8e93;
+    --glow: 0 0 10px rgba(255,255,255,.6), 0 0 3px rgba(255,255,255,.35);
+  }
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg); color: var(--ink); }
+body {
+  font: 500 15px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: .05em;
+  padding: max(12px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom));
+  max-width: 560px; margin: 0 auto;
+  -webkit-text-size-adjust: 100%;
+}
+.led { font-family: "LED", ui-monospace, monospace; font-weight: 400; letter-spacing: .05em; }
+.box { border: 1px solid var(--line); }
+.label { font-size: 12px; color: var(--ink2); letter-spacing: .08em; }
+
+.top { display: grid; grid-template-columns: auto 1fr auto; gap: 0; margin-bottom: 10px; }
+.top > .box { height: 40px; display: flex; align-items: center; justify-content: center; padding: 0 10px; margin-left: -1px; }
+.top > .box:first-child { margin-left: 0; }
+.round { font-size: 15px; }
+.code { font-size: 12px; color: var(--ink2); }
+.status { gap: 7px; font-size: 11px; color: var(--ink2); }
+.dot { width: 9px; height: 9px; background: var(--line); }
+.status.live .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status.stale .dot { background: var(--yellow); }
+.status.off .dot { background: var(--danger); }
+
+/* Team tiles */
+.teams { display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); }
+.team { margin-left: -1px; display: flex; flex-direction: column; min-width: 0; }
+.team:first-child { margin-left: 0; }
+.team .name { height: 28px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--soft);
+  font-size: 11px; font-weight: 600; color: var(--tl); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.team .money { height: 52px; display: flex; align-items: center; justify-content: center; background: var(--tc); color: #000; font-size: 24px; }
+.team.masters .money { color: #fff; text-shadow: var(--glow); outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.team.bankrupt .money { background: var(--pot); color: var(--ink2); }
+.team.bankrupt .name::after { content: " · BANKRUT"; color: var(--ink2); }
+.team.mine .name { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.team.mine .name::before { content: "★ "; }
+
+.t-blue { --tc: var(--blue); --tl: var(--blue-l); }
+.t-green { --tc: var(--green); --tl: var(--green-l); }
+.t-yellow { --tc: var(--yellow); --tl: var(--yellow-l); }
+.t-masters { --tc: var(--masters); --tl: var(--masters-l); }
+
+.pot { display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 16px; background: var(--pot);
+  border: 1px solid var(--soft); margin-top: 10px; }
+.pot .num { font-size: 30px; text-shadow: var(--glow); }
+.category { height: 52px; display: flex; align-items: center; justify-content: center; font-size: 20px; margin-top: 10px; text-align: center; padding: 0 8px; }
+
+.stage { margin-top: 10px; min-height: 280px; }
+.panel-title { height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border: 1px solid var(--soft);
+  font-size: 12px; font-weight: 600; letter-spacing: .1em; }
+.center { justify-content: center; }
+.waiting { min-height: 200px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; border: 1px solid var(--soft); text-align: center; padding: 20px; color: var(--ink2); }
+.waiting .led { color: var(--ink); font-size: 22px; }
+
+/* Auction */
+.bid { display: grid; grid-template-columns: 1fr; margin-top: -1px; }
+.bid .row { height: 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border: 1px solid var(--soft); font-size: 11px; font-weight: 600; color: var(--tl); }
+.bid .row .kasa { color: var(--ink2); }
+.bid .tile { position: relative; height: 56px; display: flex; align-items: center; justify-content: center; background: var(--tc); color: #000; font-size: 32px; }
+.bid.t-masters .tile { color: #fff; text-shadow: var(--glow); outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.bid.leading .tile { box-shadow: inset 0 0 0 3px var(--ink); }
+.badge { position: absolute; left: 0; top: 0; background: var(--ink); color: var(--bg); font: 700 10px/1 -apple-system, system-ui; letter-spacing: .1em; padding: 4px 6px; }
+.badge.vb { left: auto; right: 0; background: #000; color: #fff; }
+.bid.vb .tile { animation: blink 1s infinite; }
+@keyframes blink { 50% { filter: brightness(1.45); } }
+.bid.out .tile { background: var(--pot); color: var(--ink2); font: 600 12px -apple-system, system-ui; letter-spacing: .08em; }
+.bid.out .row { color: var(--ink2); }
+
+/* Question */
+.q { background: var(--tc, var(--pot)); color: #000; }
+.q.t-masters, .q.duel { color: #fff; }
+.q.t-masters { outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.q .text { padding: 22px 16px; font-size: 21px; font-weight: 600; line-height: 1.3; text-align: center; text-transform: uppercase; }
+.qtop { display: grid; grid-template-columns: 1fr auto; }
+.timer { width: 96px; height: 64px; display: flex; align-items: center; justify-content: center; font-size: 40px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); text-shadow: var(--glow); }
+.timer.low { color: var(--danger); }
+.timer.zero { background: var(--danger-fill); color: var(--danger); animation: blink 0.7s infinite; }
+.qtop .who { display: flex; flex-direction: column; justify-content: center; padding: 0 12px; border: 1px solid var(--soft); gap: 4px; }
+.qtop .who b { color: var(--tl, var(--ink)); font-size: 15px; }
+.answers { display: grid; gap: 8px; padding: 0 14px 16px; }
+.answer { display: flex; align-items: center; gap: 10px; background: var(--bg); color: var(--ink); border: 1px solid var(--soft); padding: 8px 10px; font-weight: 600; font-size: 15px; }
+.answer .chip { width: 26px; height: 26px; flex: none; display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--bg); font-size: 16px; }
+
+/* Result */
+.result .big { height: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: var(--tc, var(--pot)); color: #000; }
+.result.t-masters .big { color: #fff; outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.result .big .led { font-size: 60px; }
+.result.t-masters .big .led { text-shadow: var(--glow); }
+.result .note { font-size: 14px; font-weight: 700; }
+.result .answer-line { border: 1px solid var(--soft); padding: 14px; text-align: center; margin-top: 10px; }
+.result .answer-line b { display: block; font-size: 20px; margin-top: 6px; }
+
+/* End */
+.winner .big { height: 170px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: var(--tc); color: #000; }
+.winner.t-masters .big { color: #fff; outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.winner .big .led.n { font-size: 56px; }
+.winner .big .led.t { font-size: 24px; }
+.rank { margin-top: 10px; }
+.rank .r { height: 42px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border: 1px solid var(--soft); margin-top: -1px; }
+.rank .r .led { font-size: 20px; }
+.sw { display: inline-block; width: 10px; height: 10px; background: var(--tc); margin-right: 8px; outline: 1px solid var(--line); }
+.boxes { margin-top: 10px; }
+.boxrow { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--soft); margin-top: -1px; }
+.boxicon { width: 42px; height: 42px; background: #050505; outline: 1px solid #fff; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 22px; flex: none; }
+.boxrow .prize { font-size: 16px; }
+
+/* Footer */
+.mine { margin-top: 16px; }
+.chips { display: flex; gap: 0; margin-top: 6px; }
+.chip-btn { flex: 1; height: 40px; border: 1px solid var(--line); margin-left: -1px; background: var(--bg); color: var(--tl, var(--ink)); font: 600 11px -apple-system, system-ui; letter-spacing: .06em; text-transform: uppercase; }
+.chip-btn:first-child { margin-left: 0; }
+.chip-btn.on { background: var(--ink); color: var(--bg); }
+.fine { margin-top: 10px; font-size: 11px; color: var(--ink2); text-align: center; }
+
+.nocode { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 24px; text-align: center; }
+.nocode .big { font-size: 28px; padding: 22px 18px; }
+.nocode p { color: var(--ink2); text-transform: none; letter-spacing: 0; }
+.nocode form { display: flex; width: 100%; max-width: 340px; }
+.nocode input { flex: 1; height: 56px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 24px "LED", monospace; text-align: center; text-transform: uppercase; letter-spacing: .15em; border-radius: 0; }
+.btn { height: 56px; padding: 0 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font-size: 18px; border-radius: 0; }

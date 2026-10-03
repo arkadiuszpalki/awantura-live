@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="robots" content="noindex">
+  <title>Awantura o kasę · na żywo</title>
+  <link rel="preload" href="fonts/led-dot-matrix.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="box status" id="status"><span class="dot"></span><span id="statusText">ŁĄCZĘ…</span></div>
+    <div class="box led round" id="round">—</div>
+    <div class="box code" id="code">KOD —</div>
+  </header>
+
+  <section class="teams" id="teams"></section>
+  <section class="pot" id="pot"><span class="label">PULA</span><span class="led num" data-num="pot">0</span></section>
+  <section class="category box led" id="category">AWANTURA O KASĘ</section>
+
+  <main id="stage" class="stage"></main>
+
+  <footer class="mine">
+    <div class="label">MOJA DRUŻYNA</div>
+    <div class="chips" id="chips"></div>
+    <div class="fine" id="viewers"></div>
+  </footer>
+
+  <div class="nocode" id="nocode" hidden>
+    <div class="box led big">AWANTURA O KASĘ</div>
+    <p>Zeskanuj kod QR z telefonu prowadzącego<br>albo wpisz kod gry:</p>
+    <form id="codeForm"><input id="codeInput" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC234"><button class="btn primary led">OGLĄDAJ</button></form>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
