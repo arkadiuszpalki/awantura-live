@@ -8,7 +8,8 @@
 // before it is opened.
 //
 // Each player first picks their team. Then the screen follows the game:
-//   no question (wheel, results, breaks) → whole screen in MY colour, my money huge
+//   no question (wheel, results, breaks) → whole screen in MY colour edge to
+//            edge, my money huge, top bar + bottom bar with what just happened
 //   auction  → team columns: KONTO / OFERTA, PULA underneath
 //   question → PULA ——— CZAS bar, the question full screen in the answering colour
 (() => {
@@ -238,7 +239,7 @@
   function bar(s, extra = "") {
     return `<div class="bar">
       <div class="cell led round">${esc(roundText(s))}</div>
-      <div class="cell led cat"><span data-fit="22" data-min="11">${esc(s.fieldTitle || "AWANTURA O KASĘ")}</span></div>
+      <div class="cell led cat">${s.fieldTitle ? `<span data-fit="22" data-min="11">${esc(s.fieldTitle)}</span>` : ""}</div>
       ${extra}${meBtn()}
     </div>`;
   }
@@ -247,8 +248,8 @@
   function render() {
     const view = $("view");
     const s = state;
-    if (!s) { view.className = "screen plain"; view.innerHTML = connecting(); return; }
-    if (picking || !mine) { view.className = "screen plain"; view.innerHTML = picker(s); }
+    if (!s) { view.className = "screen plain pad"; view.innerHTML = connecting(); return; }
+    if (picking || !mine) { view.className = "screen plain pad"; view.innerHTML = picker(s); }
     else if (s.phase === "auction") { view.className = "screen plain auction"; view.innerHTML = auction(s); }
     else if (s.phase === "question") { view.className = "screen plain question"; view.innerHTML = question(s); }
     else { const t = myTeam(s); view.className = `screen fill ${tc(t.id)}`; view.innerHTML = home(s, t); }
@@ -277,68 +278,95 @@
 
   function myTeam(s) { return teamById(s, mine) || (mine === "masters" ? MASTERS : MASTERS); }
 
-  // 1 + 4. No question on screen: my colour, my money, the news in big letters.
+  // 1 + 4. No question on screen: my colour edge to edge, my money huge.
+  // Top bar = round · category · the other teams · corner button; bottom bar
+  // (same look) = what just happened: result, pot, right answer, box, final…
   function home(s, me) {
     const others = s.teams.filter((t) => t.id !== me.id).map((t) => `
       <div class="other ${tc(t.id)} ${t.bankrupt ? "bankrupt" : ""}"><span class="nm">${esc(t.name)}${t.bankrupt ? " · BANKRUT" : ""}</span>${led("o-" + t.id, t.total)}</div>`).join("");
-    const ev = news(s, me);
-    const label = me.bankrupt ? "BANKRUT" : `${esc(me.name)} · WASZA KASA`;
-    return `${bar(s)}
-      ${others ? `<div class="others">${others}</div>` : ""}
+    const label = me.bankrupt ? "BANKRUT" : "WASZA KASA";
+    const probe = "8".repeat(Math.max(4, String(Math.max(me.total, lastNums["me-" + me.id] || 0)).length));
+    const cells = foot(s, me);
+    // Nothing marked to fill the bar: the last plain (uncoloured) cell takes the
+    // rest; only coloured cells → an empty cell fills it (like the top bar).
+    if (cells.length && !cells.some((c) => c.grow)) {
+      const plain = [...cells].reverse().find((c) => !c.cls);
+      if (plain) plain.grow = true; else cells.push({ empty: true });
+    }
+    return `${bar(s, others ? `<div class="others">${others}</div>` : "")}
       <div class="hero">
         <div class="mine-label ${me.bankrupt ? "bankrupt" : ""}">${label}</div>
-        <div class="amount">${led("me-" + me.id, me.total, `data-fit="260" data-min="40" data-hbox="hero" data-probe="${"8".repeat(String(Math.max(me.total, lastNums["me-" + me.id] || 0)).length)}"`)}</div>
+        <div class="amount">${led("me-" + me.id, me.total, `data-fit="320" data-min="40" data-hbox="hero" data-probe="${probe}"`)}</div>
         <div class="zl">ZŁ</div>
       </div>
-      ${ev.map((e) => `<div class="news ${e.cls || ""}">
-          <span class="t">${e.text}</span>${e.big != null ? `<span class="big led" data-num="${e.key}" data-target="${e.big}" ${e.from != null ? `data-from="${e.from}"` : ""} ${e.sign ? 'data-sign="1"' : ""}>${e.big}</span>` : ""}
-        </div>`).join("")}`;
+      ${cells.length ? `<div class="bar foot">${cells.map(footCell).join("")}</div>` : ""}`;
   }
 
-  // What happened, from MY team's point of view.
-  function news(s, me) {
+  // One bottom-bar cell: small label over a value (LED, like the other teams'
+  // tiles in the top bar). n = animated LED number; tx = content text (answers,
+  // box prizes) in the system font like the question; grow = takes the rest.
+  function footCell(c) {
+    if (c.empty) return `<div class="cell kv grow"></div>`;
+    const v = c.n
+      ? `<span class="led v" data-num="${c.n}" data-target="${c.v}" ${c.sign ? 'data-sign="1"' : ""}>${c.v}</span>`
+      : c.grow
+        ? `<span class="vb"><span class="v ${c.tx ? "tx" : "led"}" data-fit="${c.tx ? 17 : 19}" data-min="9">${c.v}</span></span>`
+        : `<span class="v led">${c.v}</span>`;
+    return `<div class="cell kv ${c.cls || ""} ${c.grow ? "grow" : ""}">${c.k ? `<span class="k">${c.k}</span>` : ""}${v}</div>`;
+  }
+
+  // What happened, from MY team's point of view — cells for the bottom bar.
+  function foot(s, me) {
     const out = [];
     const isMe = (id) => id && id === me.id;
     const N = (id) => esc(nameOf(s, id));
+    const answer = (r) => r.correctAnswer && out.push({ k: "POPRAWNA ODPOWIEDŹ", v: esc(r.correctAnswer), tx: true, grow: true });
+    // Each fact in one place: round / category / other teams live in the top
+    // bar, my team is the colour of the screen — none of it is repeated here.
     switch (s.phase) {
-      case "setup": out.push({ text: "CZEKAMY NA START" }); break;
-      case "wheel": out.push({ text: s.fieldTitle ? `WYLOSOWANE: ${esc(s.fieldTitle)}` : "KOŁO SIĘ KRĘCI…" }); break;
       case "roundResult": {
         const r = s.result;
         if (!r) break;
+        const who = isMe(r.team) ? "WYNIK" : r.team ? `WYNIK · ${N(r.team)}` : "NIKT NIE ODPOWIEDZIAŁ";
         if (r.kind === "correct") {
-          out.push(isMe(r.team) ? { text: "WYGRYWACIE PULĘ", big: r.amount, key: "ev-win", sign: true, cls: "good" }
-            : { text: `${N(r.team)} WYGRYWAJĄ PULĘ`, big: r.amount, key: "ev-win", sign: true });
+          out.push({ k: who, v: "DOBRZE", cls: "good" });
+          out.push(isMe(r.team) ? { k: "WYGRYWACIE PULĘ", v: r.amount, n: "ev-win", sign: true } : { k: "WYGRYWAJĄ PULĘ", v: r.amount, n: "ev-win" });
+          answer(r);
         } else if (r.kind === "wrong") {
-          const who = isMe(r.team) ? "ŹLE · " : r.team ? `${N(r.team)} ŹLE · ` : "NIKT NIE ODPOWIEDZIAŁ · ";
-          out.push(r.amount > 0 ? { text: `${who}PULA PRZECHODZI DALEJ`, big: r.amount, key: "ev-carry" } : { text: `${who}PULA BYŁA PUSTA` });
-        } else if (r.kind === "hint") {
-          out.push(isMe(r.team) ? { text: "KUPILIŚCIE PODPOWIEDŹ", big: -r.amount, key: "ev-paid" } : { text: `${N(r.team)} KUPUJĄ PODPOWIEDŹ ZA ${r.amount} ZŁ` });
-        } else if (r.kind === "box") {
-          out.push(isMe(r.team) ? { text: "MACIE CZARNĄ SKRZYNKĘ · CO W ŚRODKU? NA KOŃCU", big: -r.amount, key: "ev-paid", cls: "box" }
-            : { text: `${N(r.team)} BIORĄ CZARNĄ SKRZYNKĘ ZA ${r.amount} ZŁ`, cls: "box" });
+          out.push({ k: who, v: "ŹLE", cls: "bad" });
+          out.push(r.amount > 0 ? { k: "PULA PRZECHODZI DALEJ", v: r.amount, n: "ev-carry" } : { k: "PULA", v: "BYŁA PUSTA" });
+          answer(r);
+        } else if (r.kind === "hint") {        // field PODPOWIEDŹ (named in the top bar): won a free hint
+          out.push(isMe(r.team) ? { k: "WYNIK", v: "MACIE JĄ NA PÓŹNIEJ", cls: "good" } : { k: "NA PÓŹNIEJ DLA", v: N(r.team) });
+          out.push(isMe(r.team) ? { k: "ZAPŁACILIŚCIE", v: -r.amount, n: "ev-paid" } : { k: "ZAPŁACILI", v: r.amount, n: "ev-paid" });
+        } else if (r.kind === "box") {         // CZARNA SKRZYNKA is already the top bar category
+          if (isMe(r.team)) {
+            out.push({ k: "ZAPŁACILIŚCIE", v: -r.amount, n: "ev-paid", cls: "box" });
+            out.push({ k: "CO W ŚRODKU?", v: "DOWIECIE SIĘ NA KOŃCU GRY", grow: true });
+          } else {
+            out.push({ k: "KUPUJĄ", v: N(r.team), cls: "box" });
+            out.push({ k: "ZAPŁACILI", v: r.amount, n: "ev-paid" });
+          }
         }
-        if (r.correctAnswer) out.push({ text: `POPRAWNA ODPOWIEDŹ: ${esc(r.correctAnswer)}`, cls: "minor" });
         break;
       }
-      case "stageEnd":
-        out.push(isMe(s.winner) ? { text: "GRACIE W FINALE Z MISTRZAMI!", cls: "good" } : { text: `DO FINAŁU IDĄ: ${N(s.winner)}` });
+      case "stageEnd":   // "KONIEC ETAPU 1" is the round cell on top
+        out.push(isMe(s.winner) ? { k: "WYNIK", v: "GRACIE W FINALE Z MISTRZAMI!", cls: "good", grow: true } : { k: "DO FINAŁU IDĄ", v: N(s.winner) });
         break;
-      case "gameEnd": {
+      case "gameEnd": {  // "KONIEC GRY" is the round cell on top
         const w = s.winner;
-        if (isMe(w)) out.push({ text: w === "masters" ? "OBRONILIŚCIE TYTUŁ!" : s.stage === "final" ? "JESTEŚCIE NOWYMI MISTRZAMI!" : "WYGRALIŚCIE!", cls: "good" });
-        else if (w) out.push({ text: w === "masters" ? "MISTRZOWIE OBRONILI TYTUŁ" : `WYGRYWAJĄ: ${N(w)}` });
+        if (isMe(w)) out.push({ k: "WYNIK", v: w === "masters" ? "OBRONILIŚCIE TYTUŁ!" : s.stage === "final" ? "JESTEŚCIE NOWYMI MISTRZAMI!" : "WYGRALIŚCIE!", cls: "good", grow: true });
+        else if (w) out.push(w === "masters" ? { k: "WYNIK", v: "MISTRZOWIE OBRONILI TYTUŁ" } : { k: "WYGRYWAJĄ", v: N(w) });
         s.boxes.filter((b) => isMe(b.owner)).forEach((b) =>
-          out.push({ text: `CZARNA SKRZYNKA: ${b.open ? esc(b.prize) : "JESZCZE ZAMKNIĘTA"}`, cls: "minor" }));
+          out.push({ k: "CZARNA SKRZYNKA", v: b.open ? esc(b.prize) : "JESZCZE ZAMKNIĘTA", tx: b.open, cls: "box", grow: true }));
         break;
       }
     }
-    if (me.bankrupt && s.phase !== "gameEnd") out.push({ text: "BANKRUT · NIE LICYTUJECIE", cls: "minor" });
-    if (!me.playing && s.stage === "final" && s.phase !== "gameEnd") {
-      const fin = s.teams.filter((t) => t.playing).map((t) => esc(t.name)).join(" KONTRA ");
-      if (fin) out.push({ text: `W FINALE: ${fin}`, cls: "minor" });
-    }
-    if (me.id === "masters" && !teamById(s, "masters")) out.push({ text: "CZEKACIE NA FINAŁ" });
+    // Hero already says BANKRUT; the bar says what it means.
+    if (me.bankrupt && s.phase !== "gameEnd") out.push({ k: "MNIEJ NIŻ 300 ZŁ", v: "NIE LICYTUJECIE", cls: "bad" });
+    // The finalists are the tiles on top; only say that we sit this one out.
+    if (!me.playing && s.stage === "final" && s.phase !== "gameEnd" && me.id !== "masters") out.push({ v: "NIE GRACIE W FINALE" });
+    if (me.id === "masters" && !teamById(s, "masters")) out.push({ v: "CZEKACIE NA FINAŁ" });
     return out;
   }
 
@@ -349,10 +377,10 @@
       const probe = "8".repeat(Math.max(4, String(Math.max(...teams.map((x) => x.bid))).length));
       const bid = t.inAuction
         ? `<span class="led" data-num="bid-${t.id}" data-target="${t.bid}" data-fit="120" data-min="18" data-probe="${probe}">${t.bid}</span>`
-        : `<span class="out-t">${t.bankrupt ? "BANKRUT" : "NIE LICYTUJE"}</span>`;
+        // Out of the auction the tile loses its colour, so the name says whose it is.
+        : `<span class="out-t">${esc(t.name)}<br>${t.bankrupt ? "BANKRUT" : "NIE LICYTUJE"}</span>`;
       return `<div class="col ${tc(t.id)} ${t.id === mine ? "mine" : ""}">
-        <div class="hd">${esc(t.name)}</div>
-        <div class="konto"><span class="lbl">KONTO</span>${led("bal-" + t.id, t.balance)}</div>
+        <div class="konto"><span class="lbl">${t.id === mine ? "WASZE KONTO" : "KONTO"}</span>${led("bal-" + t.id, t.balance)}</div>
         <div class="offer ${t.inAuction ? "" : "out"} ${t.leading ? "lead" : ""} ${t.vaBanque ? "vb" : ""}">
           <div class="ol">${t.leading ? "PROWADZI" : t.inAuction ? "OFERTA" : ""}</div>
           <div class="ov">${bid}</div>
@@ -369,7 +397,7 @@
   function question(s) {
     const q = s.question;
     const id = q.duel ? null : q.team;
-    const who = q.duel ? "1 NA 1 · KTO PIERWSZY, TEN ODPOWIADA" : id === mine ? "ODPOWIADACIE!" : `ODPOWIADAJĄ: ${esc(nameOf(s, id))}`;
+    const who = q.duel ? "1 NA 1 · KTO PIERWSZY, TEN ODPOWIADA" : id === mine ? "ODPOWIADACIE!" : "";
     const answers = q.answers
       ? `<div class="answers">${q.answers.map((a, i) => `<div class="a"><span class="chip led">${"ABCD"[i]}</span><span class="tx">${esc(a)}</span></div>`).join("")}</div>` : "";
     const haggle = q.hintOffer ? `<div class="haggle"><span>TARGUJEMY PODPOWIEDŹ</span><b class="led">${q.hintOffer} ZŁ</b></div>` : "";
@@ -380,7 +408,7 @@
       </div>
       ${haggle}
       <div class="q ${tc(id)} ${q.duel ? "duel" : ""}">
-        <div class="who">${who}</div>
+        ${who ? `<div class="who">${who}</div>` : ""}
         <div class="qtext"><span data-fit="64" data-min="15">${esc(q.text)}</span></div>
         ${answers}
       </div>`;
@@ -398,9 +426,17 @@
   }
   setInterval(tickClock, 200);
 
+  // ?debug=1&inset=62,20: fake the iPhone safe area in desktop browsers (screenshots).
+  if (debug && /^\d+,\d+$/.test(params.get("inset") || "")) {
+    const [side, bottom] = params.get("inset").split(",");
+    document.documentElement.style.setProperty("--sal", side + "px");
+    document.documentElement.style.setProperty("--sar", side + "px");
+    document.documentElement.style.setProperty("--sab", bottom + "px");
+  }
   // ?debug=1: feed a hand-made snapshot (screenshots / QA of rare screens).
   if (debug) window.__awantura.inject = (p, team) => {
     if (team) { mine = team; picking = false; }
+    if (!hostId) hostId = "debug";
     lastSentAt = 0; onSnapshot({ ...p, code, hostId, sentAt: Date.now() });
   };
 

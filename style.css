@@ -14,6 +14,8 @@
   --blue-l: #0055b3; --green-l: #1a642c; --yellow-l: #665200; --masters-l: #000000;
   --masters-edge: #000000;
   --glow: none;
+  --sat: env(safe-area-inset-top); --sar: env(safe-area-inset-right);
+  --sab: env(safe-area-inset-bottom); --sal: env(safe-area-inset-left);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -45,21 +47,28 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .fine { flex: none; font-size: 11px; color: var(--ink2); text-align: center; }
 @keyframes blink { 50% { filter: brightness(1.45); } }
 
-/* One screen, never scrolls. */
+/* One screen, never scrolls. Game screens run edge to edge (colour to the
+   very edges); only the bars carry lines. Content keeps clear of the
+   Dynamic Island / home indicator through the safe-area insets. */
 .screen {
-  position: fixed; inset: 0; display: flex; flex-direction: column; gap: 8px; overflow: hidden;
-  padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
-           max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  position: fixed; inset: 0; display: flex; flex-direction: column; gap: 0; overflow: hidden;
   background: var(--bg); color: var(--ink);
 }
+.screen.pad {
+  gap: 8px;
+  padding: max(10px, var(--sat)) max(12px, var(--sar)) max(10px, var(--sab)) max(12px, var(--sal));
+}
 .screen.fill { background: var(--tc); color: #000; }
-.screen.fill.t-masters { color: #fff; box-shadow: inset 0 0 0 2px var(--masters-edge); }
-.screen.fill.t-masters .led { text-shadow: var(--glow); }
+.screen.fill.t-masters { color: #fff; }
+.screen.fill.t-masters .hero .led { text-shadow: var(--glow); }
 
-/* Top bar: round · category · corner button */
-.bar { flex: none; display: flex; height: 44px; }
-.bar > *, .qbar > * { border: 1px solid var(--line); margin-left: -1px; background: var(--bg); color: var(--ink); }
-.bar > :first-child, .qbar > :first-child { margin-left: 0; }
+/* Bars: full-width bands (top: round · category · other teams · corner button;
+   bottom: what just happened). 1 px line on the inner edge, cells split by lines. */
+.bar, .qbar { flex: none; display: flex; background: var(--bg); color: var(--ink); }
+.bar { height: calc(44px + var(--sat)); padding: var(--sat) var(--sar) 0 var(--sal); border-bottom: 1px solid var(--line); }
+.bar.foot { height: calc(44px + var(--sab)); padding: 0 var(--sar) var(--sab) var(--sal); border-bottom: 0; border-top: 1px solid var(--line); }
+.bar > *, .qbar > * { border: 0; border-left: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+.bar > :last-child, .qbar > :last-child { border-right: 1px solid var(--line); }
 .bar .cell { display: flex; align-items: center; justify-content: center; }
 .bar .round { padding: 0 10px; font-size: 14px; white-space: nowrap; }
 .bar .cat { flex: 1; min-width: 0; padding: 0 8px; overflow: hidden; }
@@ -78,7 +87,7 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .picks { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .pick { flex: 1 1 0; min-height: 0; border: 0; background: var(--tc); color: #000;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
-.pick .nm { font-size: clamp(22px, 8vmin, 46px); }
+.pick .nm { font-size: clamp(14px, min(6vmin, 2.9vw), 40px); }
 .pick .sub { font-size: 12px; font-weight: 600; letter-spacing: .1em; }
 .pick.t-masters { color: #fff; outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
 .pick.t-masters .nm { text-shadow: var(--glow); }
@@ -88,42 +97,46 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .center-msg .big { font-size: 28px; border: 1px solid var(--line); padding: 20px 18px; }
 
 /* 1 + 4. My colour, my money */
-.others { flex: none; display: flex; gap: 6px; }
-.other { flex: 1 1 0; min-width: 0; height: 46px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
-  padding: 0 6px; background: var(--tc); color: #000; outline: 1px solid rgba(0,0,0,.4); outline-offset: -1px; }
-.other .nm { max-width: 100%; font-size: 10px; font-weight: 700; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.other .led { font-size: 18px; text-shadow: none !important; }
+.bar .others { flex: 0 1 auto; display: flex; gap: 0; min-width: 0; border: 0; background: none; }
+.other { flex: 0 1 auto; min-width: 74px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 0 10px; background: var(--tc); color: #000; border-left: 1px solid var(--line); }
+.other .nm { max-width: 100%; font-size: 9px; font-weight: 800; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.other .led { font-size: 17px; text-shadow: none !important; }
 .other.t-masters .led { text-shadow: var(--glow) !important; }
-.other.t-masters { color: #fff; outline-color: var(--masters-edge); }
-.screen.t-masters .other { outline-color: rgba(255,255,255,.55); }
+.other.t-masters { color: #fff; }
 .other.bankrupt { background: var(--pot); color: var(--ink2); }
-.hero { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; overflow: hidden; }
+.hero { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; overflow: hidden;
+  margin: 6px max(16px, var(--sar)) 6px max(16px, var(--sal)); }
 .mine-label { flex: none; text-align: center; font-size: 15px; font-weight: 700; letter-spacing: .12em; }
 .mine-label.bankrupt { font-size: 22px; }
 .amount { flex: none; width: 100%; display: flex; align-items: center; justify-content: center; }
 .zl { flex: none; text-align: center; font-size: 16px; font-weight: 700; }
-.news { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 14px;
-  background: #000; color: #fff; text-align: center; }
-.screen.t-masters .news { background: #fff; color: #000; }
-.screen.fill .news .led { text-shadow: none; }
-.news .t { display: block; width: 100%; font-size: clamp(20px, 7.4vw, 34px); font-weight: 800; line-height: 1.12; }
-.news.minor { padding: 10px 14px; }
-.news.minor .t { font-size: clamp(14px, 4.4vw, 18px); font-weight: 700; }
-.news .big { font-size: 46px; }
+
+/* Bottom bar cells: small label over the value — same as the other teams' tiles on top. */
+.kv { flex: none; min-width: 74px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 0 12px; overflow: hidden; }
+.kv.grow { flex: 1 1 0; min-width: 0; }
+.kv .k { max-width: 100%; font-size: 9px; font-weight: 800; letter-spacing: .06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kv .v { font-size: 17px; white-space: nowrap; }
+.kv .vb { width: 100%; height: 19px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.kv .v.tx { font-weight: 800; letter-spacing: .04em; line-height: 1; }
+.kv.good { background: var(--green); color: #000; }
+.kv.bad { background: var(--danger-fill); color: var(--danger); }
+.kv.team { background: var(--tc); color: #000; }
+.kv.team.t-masters { color: #fff; }
+.kv.team.t-masters .led, .kv.box .led { text-shadow: var(--glow); }
+.kv.box { background: #000; color: #fff; box-shadow: inset 0 0 0 1px #fff, inset 0 0 6px rgba(255,255,255,.45); }
 
 /* 2. Auction */
-.cols { flex: 1 1 0; min-height: 0; display: flex; }
+.cols { flex: 1 1 0; min-height: 0; display: flex; margin: 8px max(12px, var(--sar)) 8px max(12px, var(--sal)); }
 .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; margin-left: -1px; }
 .col:first-child { margin-left: 0; }
-.col .hd { flex: none; height: 30px; display: flex; align-items: center; justify-content: center; padding: 0 4px;
-  border: 1px solid var(--soft); color: var(--tl); font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.col .konto { flex: none; height: 58px; margin-top: -1px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+.col .konto { flex: none; height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   border: 1px solid var(--soft); }
 .col .konto .lbl { font-size: 10px; }
 .col .konto .led { font-size: 22px; }
-.col.mine .hd { background: var(--ink); color: var(--bg); border-color: var(--ink); }
-.col.mine .hd::before { content: "★\00a0"; }
 .col.mine .konto { background: var(--pot); }
+.col.mine .konto .lbl { color: var(--ink); font-weight: 800; }
 .offer { flex: 1 1 0; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden;
   background: var(--tc); color: #000; }
 .offer .ov { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px; overflow: hidden; }
@@ -139,16 +152,16 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .offer.lead::after { content: ""; position: absolute; inset: 0; border: 4px solid var(--ink); pointer-events: none; }
 .col.t-masters .offer.lead::after { border-color: #fff; }
 .offer.vb { animation: blink 1s infinite; }
-.pot { flex: none; height: 64px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
-  background: var(--pot); border: 1px solid var(--soft); }
+.pot { flex: none; height: calc(64px + var(--sab)); display: flex; align-items: center; justify-content: space-between;
+  padding: 0 max(16px, var(--sar)) var(--sab) max(16px, var(--sal)); background: var(--pot); border-top: 1px solid var(--line); }
 .pot .lbl { font-size: 12px; }
 .pot .led { font-size: 38px; text-shadow: var(--glow); }
 .pot.bank .led { color: var(--ink2); text-shadow: none; }
 
 /* 3. Question */
-.qbar { flex: none; display: flex; height: 84px; }
+.qbar { height: calc(84px + var(--sat)); padding: var(--sat) var(--sar) 0 var(--sal); border-bottom: 1px solid var(--line); }
 .qbar .cell { display: flex; flex-direction: column; justify-content: center; gap: 6px; padding: 0 14px; }
-.qpot { flex: 1; align-items: flex-start; background: var(--pot) !important; border-color: var(--soft) !important; }
+.qpot { flex: 1; align-items: flex-start; background: var(--pot) !important; }
 .qpot .led { font-size: 36px; text-shadow: var(--glow); }
 .clock { flex: 1; align-items: flex-end; }
 .clock .led { font-size: 54px; text-shadow: var(--glow); }
@@ -156,13 +169,14 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .clock.zero { background: var(--danger-fill) !important; }
 .clock.zero .led, .clock.zero .lbl { color: var(--danger); animation: blink .7s infinite; }
 .qbar .me-btn { height: auto; }
-.haggle { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; padding: 0 14px;
+.haggle { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px;
+  padding: 0 max(14px, var(--sar)) 0 max(14px, var(--sal));
   background: var(--ink); color: var(--bg); font-weight: 800; letter-spacing: .08em; animation: blink 1.2s infinite; }
 .haggle span { font-size: 13px; white-space: nowrap; }
 .haggle b { font-size: 26px; font-weight: 400; white-space: nowrap; }
-.q { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 14px;
-  background: var(--tc); color: #000; }
-.q.t-masters { color: #fff; outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.q { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 10px;
+  padding: 12px max(14px, var(--sar)) max(14px, var(--sab)) max(14px, var(--sal)); background: var(--tc); color: #000; }
+.q.t-masters { color: #fff; }
 .q .who { flex: none; text-align: center; font-size: 13px; font-weight: 800; letter-spacing: .1em; }
 .qtext { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .qtext [data-fit] { display: block; width: 100%; white-space: normal; font-weight: 700; line-height: 1.16; text-align: center; letter-spacing: .02em; }
@@ -187,32 +201,58 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .nocode input { flex: 1; min-width: 0; height: 56px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 24px "LED", monospace; text-align: center; text-transform: uppercase; letter-spacing: .15em; border-radius: 0; }
 .btn { height: 56px; padding: 0 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font-size: 18px; border-radius: 0; }
 
-/* Landscape: same screens, laid out wide (no scrolling). */
-@media (orientation: landscape) {
-  .picks { flex-direction: row; }
-  .answers { grid-template-columns: 1fr 1fr; }
-}
+/* Landscape only (round 8): wide layouts; portrait shows the "turn the phone" screen. */
+.picks { flex-direction: row; }
+.answers { grid-template-columns: 1fr 1fr; }
 @media (max-height: 520px) {
-  .screen { gap: 6px; }
-  .bar { height: 36px; }
+  .screen.pad { gap: 6px; }
+  .bar { height: calc(36px + var(--sat)); }
+  .bar.foot { height: calc(36px + var(--sab)); }
+  .kv { min-width: 64px; padding: 0 10px; gap: 1px; }
+  .kv .v { font-size: 14px; }
+  .kv .vb { height: 16px; }
   .me-btn { width: 40px; }
-  .others .other { height: 38px; gap: 2px; }
-  .other .led { font-size: 15px; }
+  .other { min-width: 64px; padding: 0 8px; gap: 1px; }
+  .other .led { font-size: 14px; }
   .mine-label { font-size: 13px; }
-  .news { padding: 8px 12px; gap: 2px; }
-  .news .big { font-size: 34px; }
-  .news .t { font-size: clamp(18px, 6.2vh, 28px); }
-  .news.minor .t { font-size: 14px; }
-  .col .hd { height: 26px; }
   .col .konto { height: 44px; gap: 2px; }
   .col .konto .led { font-size: 18px; }
-  .pot { height: 46px; } .pot .led { font-size: 28px; }
-  .qbar { height: 58px; }
+  .pot { height: calc(46px + var(--sab)); } .pot .led { font-size: 28px; }
+  .qbar { height: calc(58px + var(--sat)); }
   .qbar .cell { gap: 3px; }
   .qpot .led { font-size: 26px; }
   .clock .led { font-size: 38px; }
   .haggle { height: 40px; }
-  .q { padding: 8px 12px 10px; gap: 6px; }
+  .q { padding: 8px max(12px, var(--sar)) max(10px, var(--sab)) max(12px, var(--sal)); gap: 6px; }
   .a { padding: 5px 8px; font-size: 14px; }
   .a .chip { width: 22px; height: 22px; font-size: 15px; }
+}
+
+/* ---- Portrait: "OBRÓĆ TELEFON" ---------------------------------------------- */
+.turn { display: none; }
+@media (orientation: portrait) {
+  #view, .conn { display: none !important; }
+  .turn {
+    position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; padding: max(24px, var(--sat)) 28px max(24px, var(--sab)); text-align: center; background: var(--bg); color: var(--ink);
+  }
+}
+.turn-art { position: relative; width: 190px; height: 190px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); }
+.turn .phone { position: relative; width: 66px; height: 124px; border: 4px solid var(--ink); border-radius: 14px; padding: 6px;
+  animation: turn 2.6s cubic-bezier(.65, 0, .35, 1) infinite; }
+.turn .island { position: absolute; top: 5px; left: 50%; width: 18px; height: 5px; margin-left: -9px; border-radius: 3px; background: var(--ink); }
+.turn .screen-art { width: 100%; height: 100%; display: flex; flex-direction: column; gap: 3px; padding-top: 9px; }
+.turn .screen-art i { flex: 1; display: block; }
+.turn .b1 { background: var(--blue); } .turn .b2 { background: var(--green); } .turn .b3 { background: var(--yellow); }
+.turn .arrow { position: absolute; right: 14px; top: 8px; font-size: 34px; line-height: 1; color: var(--ink2);
+  animation: turnArrow 2.6s ease-in-out infinite; }
+@keyframes turn { 0%, 18% { transform: rotate(0deg); } 50%, 82% { transform: rotate(-90deg); } 100% { transform: rotate(0deg); } }
+@keyframes turnArrow { 0%, 18% { opacity: 1; } 40%, 100% { opacity: .25; } }
+.turn .title { font-size: 34px; text-shadow: var(--glow); }
+.turn .sub { font-size: 14px; font-weight: 700; letter-spacing: .1em; }
+.turn .hint { max-width: 300px; font-size: 13px; font-weight: 500; line-height: 1.4; color: var(--ink2); text-transform: none; letter-spacing: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .turn .phone { animation: none; transform: rotate(-90deg); }
+  .turn .arrow { animation: none; }
 }

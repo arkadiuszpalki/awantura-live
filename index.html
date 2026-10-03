@@ -10,11 +10,22 @@
   <meta name="robots" content="noindex">
   <title>Awantura o kasę · na żywo</title>
   <link rel="preload" href="fonts/led-dot-matrix.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="style.css?v=20261003131505">
+  <link rel="stylesheet" href="style.css?v=20261003135203">
 </head>
 <body>
-  <main id="view" class="screen plain"></main>
+  <main id="view" class="screen plain pad"></main>
   <div class="conn" id="conn" hidden></div>
+
+  <!-- Portrait: the player page works only in landscape. -->
+  <div class="turn" id="turn" role="alert">
+    <div class="turn-art" aria-hidden="true">
+      <div class="phone"><div class="screen-art"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div><span class="island"></span></div>
+      <div class="arrow">↺</div>
+    </div>
+    <div class="led title">OBRÓĆ TELEFON</div>
+    <p class="sub">Podgląd gry działa w poziomie.</p>
+    <p class="hint">Jeśli ekran się nie obraca: wyłącz blokadę orientacji w Centrum sterowania.</p>
+  </div>
   <div class="dbg" id="dbg" hidden></div>
 
   <div class="nocode" id="nocode" hidden>
@@ -23,6 +34,6 @@
     <form id="codeForm"><input id="codeInput" maxlength="6" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABC234"><button class="btn primary led">OGLĄDAJ</button></form>
   </div>
 
-  <script src="app.js?v=20261003131505"></script>
+  <script src="app.js?v=20261003135203"></script>
 </body>
 </html>
