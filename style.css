@@ -146,3 +146,5 @@ body {
 .nocode form { display: flex; width: 100%; max-width: 340px; }
 .nocode input { flex: 1; height: 56px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); font: 24px "LED", monospace; text-align: center; text-transform: uppercase; letter-spacing: .15em; border-radius: 0; }
 .btn { height: 56px; padding: 0 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font-size: 18px; border-radius: 0; }
+.nocode[hidden] { display: none; }
+.nocode input { min-width: 0; }

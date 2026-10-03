@@ -67,7 +67,7 @@
     if (p.sentAt && p.sentAt < lastSentAt) return;  // late / out of order
     lastSentAt = p.sentAt || lastSentAt;
     lastMsgAt = Date.now();
-    const lag = p.sentAt ? Date.now() - p.sentAt : null;
+    const lag = p.sentAt ? Math.round(Date.now() - p.sentAt) : null;
     if (lag != null) { window.__awantura.lags.push(lag); if (window.__awantura.lags.length > 200) window.__awantura.lags.shift(); }
     window.__awantura.last = p;
     const same = state && JSON.stringify({ ...state, sentAt: 0, seq: 0 }) === JSON.stringify({ ...p, sentAt: 0, seq: 0 });
