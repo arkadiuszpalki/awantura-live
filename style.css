@@ -8,33 +8,31 @@
 }
 
 :root {
-  --bg: #ffffff; --ink: #000000; --ink2: #636366; --line: #8e8e93; --soft: #c6c6c8;
-  --pot: #f2f2f7; --danger: #d70015; --danger-fill: #ffe5e3; --red: #ff3b30;
-  --blue: #007aff; --green: #34c759; --yellow: #ffcc00; --masters: #000000;
-  --blue-l: #0055b3; --green-l: #1a642c; --yellow-l: #665200; --masters-l: #000000;
-  --masters-edge: #000000;
-  --glow: none;
+  /* Dark OLED only (v11) — same values as the app's Theme.swift. */
+  --bg: #000000; --ink: #ffffff; --ink2: #8d8d93; --line: #636366; --soft: #38383a;
+  --pot: #1c1c1e; --danger: #ff453a; --red: #ff453a;
+  --blue: #0a84ff; --green: #30d158; --yellow: #ffd60a; --masters: #000000;
+  --masters-edge: #8e8e93; --ink-out: #b0b0b5;
+  --glow: 0 0 10px rgba(255,255,255,.6), 0 0 3px rgba(255,255,255,.35);
   --sat: env(safe-area-inset-top); --sar: env(safe-area-inset-right);
   --sab: env(safe-area-inset-bottom); --sal: env(safe-area-inset-left);
   /* Bars: one height, one label size, one LED value size everywhere. */
   --bh: 42px; --bk: 11px; --bv: 20px;
-  color-scheme: light dark;
+  color-scheme: dark;
 }
 @media (max-height: 380px) { :root { --bh: 36px; --bk: 10px; --bv: 17px; } }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #000000; --ink: #ffffff; --ink2: #8d8d93; --line: #636366; --soft: #38383a;
-    --pot: #1c1c1e; --danger: #ff453a; --danger-fill: #3a0f0b; --red: #ff453a;
-    --blue: #0a84ff; --green: #30d158; --yellow: #ffd60a;
-    --blue-l: #3b9dff; --green-l: #30d158; --yellow-l: #ffd60a; --masters-l: #ffffff;
-    --masters-edge: #8e8e93;
-    --glow: 0 0 10px rgba(255,255,255,.6), 0 0 3px rgba(255,255,255,.35);
-  }
+/* --tc team colour; --tdim / --tink = a team that is out (bankrupt, not
+   bidding, not in the final): the colour darkened on black like the web
+   prototype (≈ 22 % colour) with dimmed team-coloured digits (≈ 45 %);
+   --tbid = an offer that does not lead (prototype: 30 % black vs the leader). */
+.t-blue, .t-green, .t-yellow, .t-masters {
+  --tdim: color-mix(in srgb, var(--tc) 22%, #000); --tink: color-mix(in srgb, var(--tc) 45%, #000);
+  --tbid: color-mix(in srgb, var(--tc) 35%, #000); --tlite: color-mix(in srgb, var(--tc) 70%, #fff);
 }
-.t-blue { --tc: var(--blue); --tl: var(--blue-l); }
-.t-green { --tc: var(--green); --tl: var(--green-l); }
-.t-yellow { --tc: var(--yellow); --tl: var(--yellow-l); }
-.t-masters { --tc: var(--masters); --tl: var(--masters-l); }
+.t-blue { --tc: var(--blue); }
+.t-green { --tc: var(--green); }
+.t-yellow { --tc: var(--yellow); }
+.t-masters { --tc: var(--masters); --tdim: #1c1c1e; --tink: #8d8d93; --tbid: #2c2c2e; --tlite: #d1d1d6; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { background: var(--bg); color: var(--ink); height: 100%; overflow: hidden; }
@@ -46,6 +44,12 @@ body {
 button { font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; border-radius: 0; cursor: pointer; }
 .led { font-family: "LED", ui-monospace, monospace; font-weight: 400; letter-spacing: .05em; line-height: 1; }
 [data-fit] { display: inline-block; white-space: nowrap; }
+/* Fixed digit cells (all LED digits share one width): changed digits roll up. */
+.dg { display: inline-block; position: relative; vertical-align: top; height: 1em; line-height: 1; clip-path: inset(-0.04em -0.6em); }
+.dg i { display: block; font-style: normal; height: 1em; }
+.dg.roll i { animation: roll .14s cubic-bezier(.25, 0, 0, 1) both; }
+@keyframes roll { from { transform: translateY(0); } to { transform: translateY(-100%); } }
+.dg i:only-child { transform: none !important; animation: none !important; }
 .lbl { font-size: 11px; font-weight: 600; letter-spacing: .1em; color: var(--ink2); }
 .fine { flex: none; font-size: 11px; color: var(--ink2); text-align: center; }
 @keyframes blink { 50% { filter: brightness(1.45); } }
@@ -63,6 +67,8 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 }
 .screen.fill { background: var(--tc); color: #000; }
 .screen.fill.t-masters { color: #fff; }
+.screen.fill.out { background: var(--tdim); color: var(--tink); }
+.screen.fill.out .mine-label, .screen.fill.out .zl { color: var(--ink-out); }
 .screen.fill.t-masters .hero .led { text-shadow: var(--glow); }
 
 /* ---- Bars -------------------------------------------------------------------
@@ -74,21 +80,23 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .bar { flex: none; display: flex; background: var(--bg); color: var(--ink); }
 .bar.top { height: calc(var(--bh) + var(--sat)); border-bottom: 1px solid var(--line); }
 .bar.foot { height: calc(var(--bh) + var(--sab)); border-top: 1px solid var(--line); }
-.bar > .cell { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+.bar > .cell { flex: 0 0 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
   padding: 0 12px; border: 0; border-left: 1px solid var(--line); background: var(--bg); color: var(--ink);
   overflow: hidden; white-space: nowrap; }
 .bar.top > .cell { padding-top: var(--sat); }
 .bar.foot > .cell { padding-bottom: var(--sab); }
 .bar > .cell:first-child { border-left: 0; padding-left: calc(12px + var(--sal)); }
 .bar > .cell:last-child { padding-right: calc(12px + var(--sar)); }
-.bar > .cell.grow { flex-grow: 3; }
-/* top bar: round and team tiles keep their size, the category takes the rest */
-.bar.top > .cell { flex-grow: 0; }
-.bar.top > .cell.grow, .bar.qbar > .cell { flex-grow: 1; }
-/* question bar = one open line: PULA 7300 ———— CZAS 0:51 (no divider) */
-.bar.qbar > .cell + .cell { border-left: 0; }
-.bar > .cell.stack { flex-direction: column; gap: 2px; }
-.bar > .cell.stack .vb { max-width: 100%; justify-content: center; }
+.bar > .cell.grow, .bar > .cell:only-child { flex: 1 1 0; }
+/* question bar: PULA left, CZAS right, one open line */
+.bar.qbar > .cell { flex: 1 1 0; }
+/* question bar: DO WYGRANIA on the answering team's colour, the clock apart */
+.bar.qbar > .cell + .cell { flex: 0 0 auto; min-width: 140px; }
+.bar.qbar > .cell.team { justify-content: flex-start; }
+/* stacked bar: label over value, cells share the width, values fit */
+.bar.stack > .cell { flex: 1 1 auto; flex-direction: column; gap: 2px; }
+.bar.stack > .cell.grow { flex: 2 1 auto; }
+.bar.stack > .cell .vb { max-width: 100%; justify-content: center; }
 .bar > .cell.at-start { justify-content: flex-start; }
 .bar > .cell.at-end { justify-content: flex-end; }
 .cell .k { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: var(--bk); font-weight: 700; letter-spacing: .1em; color: var(--ink2); }
@@ -103,9 +111,10 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .bar > .cell.box { background: var(--ink); color: var(--bg); }
 .bar > .cell.hl { background: var(--ink); color: var(--bg); }
 .bar > .cell.team { background: var(--tc); color: #000; flex-grow: 0; min-width: 76px; }
+.bar > .cell.team.grow { flex: 1 1 0; }
 .bar > .cell.team.t-masters { color: #fff; box-shadow: inset 0 0 0 1.5px var(--masters-edge); }
 .bar > .cell.team.t-masters .v { text-shadow: var(--glow); }
-.bar > .cell.team.out { background: color-mix(in srgb, var(--tc) 30%, var(--bg)); color: var(--ink); }
+.bar > .cell.team.out { background: var(--tdim); color: var(--ink-out); }
 .bar > .cell.good .k, .bar > .cell.bad .k, .bar > .cell.box .k, .bar > .cell.hl .k, .bar > .cell.team .k { color: inherit; }
 .bar > .cell.zero .v, .bar > .cell.zero .k { animation: blink .7s infinite; }
 .bar.haggle { height: var(--bh); border-bottom: 1px solid var(--line); animation: blink 1.2s infinite; }
@@ -137,29 +146,65 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .zl { flex: none; text-align: center; font-size: 16px; font-weight: 700; }
 
 /* 2. Auction: columns KONTO over OFERTA (no names: colour = team), PULA bar */
-.cols { flex: 1 1 0; min-height: 0; display: flex; margin: 8px calc(8px + var(--sar)) 8px calc(8px + var(--sal)); }
-.col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; margin-left: -1px; }
-.col:first-child { margin-left: 0; }
+/* edge to edge: columns run the full height between the bars and to the
+   screen sides; the first/last column's content keeps clear of the safe area */
+.cols { flex: 1 1 0; min-height: 0; display: flex; }
+.col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; border-left: 1px solid #000; }
+.col:first-child { border-left: 0; }
+.col:first-child > .konto, .col:first-child .ol, .col:first-child .ov { padding-left: var(--sal); }
+.col:last-child > .konto, .col:last-child .ol, .col:last-child .ov { padding-right: var(--sar); }
 .col[data-id] { cursor: pointer; }
 .col .konto { flex: none; height: var(--bh); display: flex; align-items: center; justify-content: center; gap: 8px;
-  border: 1px solid var(--soft); }
+  border-bottom: 1px solid var(--line); }
+.col + .col .konto { box-shadow: inset 1px 0 0 var(--line); }
 .col .konto .k { font-size: var(--bk); font-weight: 700; letter-spacing: .1em; color: var(--ink); }
 .col .konto .v { font-size: var(--bv); text-shadow: var(--glow); }
 .col.mine .konto { background: var(--pot); }
 .offer { flex: 1 1 0; min-height: 0; position: relative; display: flex; flex-direction: column; overflow: hidden;
-  background: var(--tc); color: #000; }
+  background: var(--tbid); color: var(--tlite); }
 .offer .ov { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px; overflow: hidden; }
-.offer .ol { flex: none; height: 24px; display: flex; align-items: center; justify-content: center;
-  font-size: var(--bk); font-weight: 700; letter-spacing: .1em; }
-/* leading offer: only its label cell turns into a white box with black text */
-.offer.lead .ol:first-child { background: #fff; color: #000; }
-.offer .ol.vbl { background: #000; color: #fff; }
-.col.t-masters .offer { color: #fff; outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.offer .st { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center;
+  font-size: var(--bk); font-weight: 800; letter-spacing: .12em; color: var(--ink-out); }
+/* the leader (and VA BANQUE): full team colour, black digits */
+.offer.lead { background: var(--tc); color: #000; }
+.offer.lead .st { color: #000; }
+.col.t-masters .offer { outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.col.t-masters .offer.lead { color: #fff; }
 .col.t-masters .offer .led { text-shadow: var(--glow); }
-.offer.out { background: color-mix(in srgb, var(--tc) 30%, var(--bg)); color: var(--ink); }
-.col.t-masters .offer.out { color: var(--ink2); }
-.out-t { font-size: 13px; font-weight: 700; text-align: center; letter-spacing: .06em; }
-.offer.vb { animation: blink 1s infinite; }
+/* out of the auction (bankrupt / not bidding / BLOKADA): darker still */
+.offer.out { background: var(--tdim); color: var(--tink); }
+.offer.out .led { text-shadow: none !important; }
+/* VA BANQUE: the prototype's 200 ms blink between 30 % and 60 % black */
+.offer.vb { animation: vb .4s steps(1, end) infinite; }
+@keyframes vb { 0% { background: color-mix(in srgb, var(--tc) 70%, #000); } 50% { background: color-mix(in srgb, var(--tc) 40%, #000); } }
+/* an overbid: a short pulse of the tile (the host's phone plays the bid sound) */
+.offer.pulse { animation: pulse .22s cubic-bezier(.25, 0, 0, 1); }
+@keyframes pulse { 0% { filter: brightness(1.35); transform: scale(1.03); } 100% { filter: none; transform: none; } }
+/* "po raz pierwszy…" / "biorę po 200 zł": one big LED call over the offers */
+.cols { position: relative; }
+.big-call { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); z-index: 2;
+  display: flex; align-items: center; justify-content: center; height: 34%;
+  background: rgba(0,0,0,.82); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.big-call .led { font-size: clamp(20px, min(11vh, 5.6vw), 52px); color: #fff; text-shadow: var(--glow); white-space: nowrap; }
+.big-call.sold { background: #fff; } .big-call.sold .led { color: #000; text-shadow: none; }
+
+/* House rules' effects: thin bars under the top bar */
+.bar.fx { height: 30px; border-bottom: 1px solid var(--line); }
+.bar.fx > .cell { flex: 1 1 0; }
+/* 1 NA 1 crossing out: the list, crossed-out ones dimmed and struck */
+.strike { flex: 1 1 0; min-height: 0; display: flex; flex-wrap: wrap; align-content: stretch; gap: 1px;
+  background: var(--line); }
+.sk { flex: 1 0 calc(33.34% - 1px); display: flex; align-items: center; justify-content: center; background: var(--bg); }
+.sk.l { padding-left: var(--sal); } .sk.r { padding-right: var(--sar); } .sk.b { padding-bottom: var(--sab); }
+.sk .led { font-size: clamp(16px, 5vh, 26px); text-shadow: var(--glow); }
+.sk.out .led { color: var(--ink2); text-decoration: line-through; text-shadow: none; }
+
+/* The wheel (live): half wheel anchored at the bottom, pointer on top */
+.screen.wheel .wheel-area { flex: 1 1 0; min-height: 0; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+.wheel-svg { width: 100%; height: 100%; display: block; }
+.wheel-svg #disc { will-change: transform; transform-origin: 0 0; }
+.wheel-svg text { font-family: "LED", ui-monospace, monospace; letter-spacing: .04em; }
+#wheelTicker { font-family: "LED", ui-monospace, monospace; font-size: var(--bv); text-shadow: var(--glow); white-space: nowrap; }
 
 /* 3. Question: low bar PULA ——— CZAS, the question wide, A–D 2×2 */
 .q { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 8px;

@@ -129,6 +129,8 @@
     const lag = p.sentAt ? Math.round(Date.now() - p.sentAt) : null;
     if (lag != null && fresh) { window.__awantura.lags.push(lag); if (window.__awantura.lags.length > 200) window.__awantura.lags.shift(); }
     window.__awantura.last = p;
+    // Host clock → this phone's clock (network lag included): for the wheel.
+    if (p.sentAt) skew = Date.now() - p.sentAt;
     // Clock: counted down on this phone, re-synced by every snapshot.
     const q = p.question;
     if (q) {
@@ -161,23 +163,48 @@
   const infoLine = () => [statusText, "KOD " + code, viewers > 0 ? `OGLĄDA: ${viewers}` : ""].filter(Boolean).join(" · ");
 
   // ---- animated LED numbers ---------------------------------------------------
+  // Like the host's web prototype: money moves in steps of 100 (100 ms per step
+  // up to 2000, 50 ms up to 5000, faster above), and every digit sits in its own
+  // fixed cell (the LED font's digits are all the same width) — the changed
+  // digits roll vertically like iOS numeric text; the layout never moves.
   const tweens = new Map();
+  const fmt = (v, el) => (el.dataset.sign && v > 0 ? "+" : "") + v;
+  const stepMs = (d) => (d <= 2000 ? 100 : d <= 5000 ? 50 : 10);
+  function paint(el, text, roll) {
+    const cells = el.children;
+    if (!roll || cells.length !== text.length || !el.dataset.cells) {
+      el.dataset.cells = "1";
+      el.innerHTML = [...text].map((c) => `<span class="dg"><i>${c}</i></span>`).join("");
+      return;
+    }
+    [...text].forEach((c, i) => {
+      const cell = cells[i], cur = cell.lastElementChild.textContent;
+      if (cur === c) return;
+      // old digit slides up, new one comes from below (iOS numericText feel)
+      cell.innerHTML = `<i>${cur}</i><i>${c}</i>`;
+      cell.classList.remove("roll"); void cell.offsetWidth; cell.classList.add("roll");
+      // after the roll keep only the new digit (nothing parked above it)
+      cell.onanimationend = () => { cell.classList.remove("roll"); cell.innerHTML = `<i>${c}</i>`; };
+    });
+  }
   function num(el, value) {
     const from = Number(el.dataset.v ?? value);
     el.dataset.v = value;
-    if (from === value) { el.textContent = fmt(value, el); return; }
-    const d = Math.min(2200, Math.max(350, Math.abs(value - from) / 2.5));
-    const t0 = performance.now();
-    cancelAnimationFrame(tweens.get(el));
-    const step = (t) => {
-      const u = Math.min(1, (t - t0) / d);
-      const e = 1 - Math.pow(1 - u, 3);
-      el.textContent = fmt(Math.round(from + (value - from) * e), el);
-      if (u < 1) tweens.set(el, requestAnimationFrame(step));
+    clearTimeout(tweens.get(el));
+    if (from === value) { paint(el, fmt(value, el), false); return; }
+    const dir = Math.sign(value - from), d = Math.abs(value - from);
+    const ms = el.dataset.dur ? Math.max(10, Number(el.dataset.dur) / Math.max(1, Math.ceil(d / 100))) : stepMs(d);
+    let cur = from;
+    paint(el, fmt(cur, el), false);
+    const tick = () => {
+      cur = dir > 0 ? Math.min(value, cur + 100) : Math.max(value, cur - 100);
+      // not a multiple of 100 (rare): land exactly on the value
+      if (Math.abs(value - cur) < 100) cur = value;
+      paint(el, fmt(cur, el), ms >= 40);
+      if (cur !== value) tweens.set(el, setTimeout(tick, ms));
     };
-    tweens.set(el, requestAnimationFrame(step));
+    tweens.set(el, setTimeout(tick, Number(el.dataset.delay || 0) + ms));
   }
-  const fmt = (v, el) => (el.dataset.sign && v > 0 ? "+" : "") + v;
   // Re-rendered markup carries data-num="key"; values persist across renders.
   const lastNums = {};
   function settleNums(root) {
@@ -186,7 +213,6 @@
       if (Number.isNaN(v)) return;
       const from = el.dataset.from != null && lastNums[k] !== v ? Number(el.dataset.from) : null;
       el.dataset.v = from ?? lastNums[k] ?? v;
-      el.textContent = fmt(Number(el.dataset.v), el);
       num(el, v);
       lastNums[k] = v;
     });
@@ -198,19 +224,21 @@
   // Bar cells: label next to value; only when that does not fit, the label goes
   // above the value (same sizes) — then `fit` shrinks the value if still needed.
   function fitBars(root) {
-    const cells = [...root.querySelectorAll(".bar > .cell")];
-    cells.forEach((c) => c.classList.remove("stack"));
-    cells.forEach((c) => {
-      const v = c.querySelector(".v"), k = c.querySelector(".k");
-      if (!v || !k || !k.textContent) return;
-      if (v.dataset.fit) v.style.fontSize = "";
-      const cs = getComputedStyle(c);
-      const room = c.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-      if (k.offsetWidth + parseFloat(cs.columnGap || 0) + v.scrollWidth > room + 0.5) c.classList.add("stack");
-    });
-    // One bar, one layout: if a cell had to stack, the whole bar stacks.
-    root.querySelectorAll(".bar").forEach((b) => {
-      if (b.querySelector(".cell.stack")) b.querySelectorAll(":scope > .cell").forEach((c) => c.classList.add("stack"));
+    root.querySelectorAll(".bar").forEach((bar) => {
+      const cells = [...bar.querySelectorAll(":scope > .cell")];
+      bar.classList.remove("stack");
+      cells.forEach((c) => c.querySelectorAll("[data-fit]").forEach((v) => { v.style.fontSize = ""; }));
+      // Inline: fixed cells keep their natural width, only `grow` cells give
+      // way. Too wide → the whole bar puts labels over values; then `fit` shrinks.
+      const over = () => bar.scrollWidth > bar.clientWidth + 1 || cells.some((c) => {
+        const k = c.querySelector(".k"), v = c.querySelector(".v");
+        if (!v) return false;
+        const cs = getComputedStyle(c);
+        const room = c.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+        const need = (k && k.textContent ? k.scrollWidth + parseFloat(cs.columnGap || 0) : 0) + v.scrollWidth;
+        return need > room + 1;
+      });
+      if (over()) bar.classList.add("stack");
     });
   }
 
@@ -233,6 +261,13 @@
       while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (fits(mid)) lo = mid; else hi = mid; }
       el.style.fontSize = lo + "px";
       el.textContent = shown;
+    });
+    // data-fit-group: siblings (e.g. the auction offers) share the smallest size.
+    const groups = {};
+    root.querySelectorAll("[data-fit-group]").forEach((el) => (groups[el.dataset.fitGroup] ||= []).push(el));
+    Object.values(groups).forEach((els) => {
+      const min = Math.min(...els.map((el) => parseFloat(el.style.fontSize) || Infinity));
+      if (isFinite(min)) els.forEach((el) => { el.style.fontSize = min + "px"; });
     });
   }
   // Re-fit after rotation (twice: iOS settles the toolbar a moment later) and once the LED font is in.
@@ -294,14 +329,46 @@
   function render() {
     const view = $("view");
     const s = state;
+    if (s && s.phase !== "auction") lastPhase = s.phase;
     if (!s) { view.className = "screen plain pad"; view.innerHTML = connecting(); return; }
+    if (!picking && mine && s.spin) {
+      // The wheel turning (or just stopped) on the host's phone: full screen here
+      // too. Same spin = keep the running animation, only refresh the bar.
+      const key = String(s.spin.startedAt);
+      if (view.dataset.spin !== key) { view.dataset.spin = key; view.className = "screen plain wheel"; view.innerHTML = wheelScreen(s); startWheel(s.spin); }
+      return;
+    }
+    view.dataset.spin = "";
+    stopWheel();
+    // TV moment after DOBRZE / ŹLE: WYGRANA on the answering team's colour —
+    // counts up to the pot (or falls from it to zero), then the accounts jump.
+    const r = s.result;
+    if (!picking && mine && s.phase === "roundResult" && r && (r.kind === "correct" || r.kind === "wrong")) {
+      const key = [s.stage, s.questionNumber, r.kind, r.team, r.amount].join("|");
+      if (!seenMoments.has(key)) { seenMoments.add(key); moment = { key, until: Date.now() + (r.kind === "correct" ? 3300 : 4000) }; }
+      if (moment && moment.key === key && Date.now() < moment.until) {
+        view.className = `screen fill ${tc(r.team)}`;
+        view.innerHTML = momentView(s, r);
+        fitAll(view); settleNums(view);
+        clearTimeout(moment.timer);
+        moment.timer = setTimeout(() => { jumpAccounts(); render(); }, moment.until - Date.now() + 20);
+        return;
+      }
+    }
     if (picking || !mine) { view.className = "screen plain pad"; view.innerHTML = picker(s); }
+    else if (s.phase === "strike" && s.strike) { view.className = "screen plain strike-screen"; view.innerHTML = strikeView(s); }
     else if (s.phase === "auction") { view.className = "screen plain auction"; view.innerHTML = auction(s); }
     else if (s.phase === "question") { view.className = "screen plain question"; view.innerHTML = question(s); }
-    else { const t = myTeam(s); view.className = `screen fill ${tc(t.id)}`; view.innerHTML = home(s, t); }
+    else {
+      const t = myTeam(s);
+      // Out of the game (bankrupt / not in the final): the darkened team colour.
+      const out = t.bankrupt || (s.stage === "final" && !t.playing && t.id !== "masters");
+      view.className = `screen fill ${tc(t.id)} ${out ? "out" : ""}`;
+      view.innerHTML = home(s, t);
+    }
+    tickClock();  // fill the clock first: the bar measures real content
     fitAll(view);
     settleNums(view);
-    tickClock();
   }
 
   function connecting() {
@@ -333,6 +400,9 @@
     const label = me.bankrupt ? "BANKRUT" : "WASZA KASA";
     const probe = "8".repeat(Math.max(4, String(Math.max(me.total, lastNums["me-" + me.id] || 0)).length));
     const cells = foot(s, me);
+    // Every bar is filled: if nothing is marked to grow, the last plain cell
+    // (or else the last cell) takes the rest — no empty holes.
+    if (cells.length && !cells.some((c) => c.grow)) ([...cells].reverse().find((c) => !c.cls) || cells[cells.length - 1]).grow = true;
     return `${bar(s, others)}
       <div class="hero">
         <div class="mine-label ${me.bankrupt ? "bankrupt" : ""}">${label}</div>
@@ -340,6 +410,46 @@
         <div class="zl">ZŁ</div>
       </div>
       ${cells.length ? barOf(cells, "foot") : ""}`;
+  }
+
+  // House rules' effects this round: one bar each (KARA ZA BIERNOŚĆ / +10 000).
+  function effects(s) {
+    const cells = [];
+    if (s.bonusAdded) cells.push(barOf([{ k: "OSTATNIE PYTANIE FINAŁU", v: `+${s.bonusAdded} ZŁ DO PULI`, cls: "good" }], "fx"));
+    (s.penalties || []).forEach((p) => cells.push(barOf([{ k: `KARA ZA BIERNOŚĆ · ${esc(nameOf(s, p.team))}`, v: `−${p.amount} ZŁ`, cls: "bad" }], "fx")));
+    return cells.join("");
+  }
+  // 1 NA 1 with crossing out: the list, crossed-out ones dimmed, whose turn.
+  function strikeView(s) {
+    const st = s.strike;
+    // 3 per row, lines only between cells (container gap), safe-area padding on the outer cells.
+    const n = st.options.length, last = n - (n % 3 || 3);
+    const items = st.options.map((o, i) => {
+      const edge = [i % 3 === 0 ? "l" : "", i % 3 === 2 || i === n - 1 ? "r" : "", i >= last ? "b" : ""].join(" ");
+      return `<div class="sk ${edge} ${st.struck.includes(o) ? "out" : ""}"><span class="led">${esc(o)}</span></div>`;
+    }).join("");
+    return `${barOf([roundCell(s), { k: "1 NA 1 · SKREŚLAJĄ", v: esc(nameOf(s, st.turn)), cls: `team ${tc(st.turn)}`, grow: true }], "top")}
+      <div class="strike">${items}</div>`;
+  }
+
+  let moment = null;
+  const seenMoments = new Set();
+  function momentView(s, r) {
+    const won = r.kind === "correct";
+    const from = won ? 0 : r.amount, to = won ? r.amount : 0;
+    return `${bar(s, [])}
+      <div class="hero">
+        <div class="mine-label">WYGRANA</div>
+        <div class="amount"><span class="led" data-num="moment" data-target="${to}" data-from="${from}" data-dur="${won ? 1500 : 3000}" data-delay="${won ? 200 : 600}"
+          data-fit="320" data-min="40" data-hbox="hero" data-probe="${"8".repeat(Math.max(4, String(r.amount).length))}">${from}</span></div>
+        <div class="zl">${won ? "DOBRZE" : r.amount > 0 ? "ŹLE · PULA PRZECHODZI DALEJ" : "ŹLE"}</div>
+      </div>`;
+  }
+  // After the moment the accounts jump to the new values (no counting), like on TV.
+  function jumpAccounts() {
+    if (!state) return;
+    teamsOf(state).forEach((t) => { lastNums["me-" + t.id] = t.total; lastNums["o-" + t.id] = t.total; });
+    lastNums.moment = undefined;
   }
 
   // What happened, from MY team's point of view — cells for the bottom bar.
@@ -399,26 +509,45 @@
 
   // 2. Auction: team columns (KONTO over OFERTA), PULA bar underneath. No team
   // names: the colour says whose column it is; tap another column = become that team.
+  // Bids seen last time: a team that just went up and leads gets a short pulse.
+  let prevBids = {};
+  // TV-style (Arek, v11): the leading offer is the one lit in full colour, the
+  // other offers sit dimmed (dark team colour, light digits); a team that is
+  // out (bankrupt / not bidding / BLOKADA) is darker still with a small word.
+  // Closing ("po raz pierwszy…") and the entry fee ("biorę po 200 zł") show big.
+  const CLOSING = ["", "PO RAZ PIERWSZY…", "PO RAZ DRUGI…", "PO RAZ TRZECI…", "SPRZEDANE!"];
+  let lastPhase = "", feeUntil = 0;
   function auction(s) {
     const teams = s.teams.filter((t) => t.playing);
+    const pulsed = new Set(teams.filter((t) => t.leading && prevBids[t.id] != null && t.bid > prevBids[t.id]).map((t) => t.id));
+    prevBids = Object.fromEntries(teams.map((t) => [t.id, t.bid]));
     const probe = "8".repeat(Math.max(4, String(Math.max(...teams.map((x) => x.bid))).length));
     const cols = teams.map((t) => {
+      const state = !t.inAuction ? (t.bankrupt ? "BANKRUT" : "NIE LICYTUJE") : t.blocked ? "BLOKADA" : t.vaBanque ? "VA BANQUE" : "";
       const bid = t.inAuction
-        ? `<span class="led" data-num="bid-${t.id}" data-target="${t.bid}" data-fit="120" data-min="18" data-probe="${probe}">${t.bid}</span>`
-        : `<span class="out-t">${t.bankrupt ? "BANKRUT" : "NIE LICYTUJE"}</span>`;
+        ? `<span class="led" data-num="bid-${t.id}" data-target="${t.bid}" data-fit="120" data-min="18" data-fit-group="bids" data-probe="${probe}">${t.bid}</span>`
+        : "";
+      const cls = !t.inAuction || t.blocked ? "out" : t.leading || t.vaBanque ? "lead" : "";
       return `<div class="col ${tc(t.id)} ${t.id === mine ? "mine" : ""}" ${t.id !== mine ? `data-id="${t.id}"` : ""}>
         <div class="konto">${t.id === mine ? `<span class="k">WASZE KONTO</span>` : ""}<span class="v led" data-num="bal-${t.id}" data-target="${t.balance}">${t.balance}</span></div>
-        <div class="offer ${t.inAuction ? "" : "out"} ${t.leading ? "lead" : ""} ${t.vaBanque ? "vb" : ""}">
-          <div class="ol">${t.leading ? "PROWADZI" : t.inAuction ? "OFERTA" : ""}</div>
+        <div class="offer ${cls} ${t.vaBanque ? "vb" : ""} ${pulsed.has(t.id) && !t.vaBanque ? "pulse" : ""}"
+             aria-label="${esc(t.name)}: ${t.inAuction ? `oferta ${t.bid} zł` : state.toLowerCase()}${t.leading ? ", prowadzi" : ""}">
           <div class="ov">${bid}</div>
-          ${t.vaBanque ? `<div class="ol vbl">VA BANQUE</div>` : ""}
+          ${state ? `<div class="st">${state}</div>` : ""}
         </div>
       </div>`;
     }).join("");
-    return `${bar(s)}
-      <div class="cols n${teams.length}">${cols}</div>
+    // Entry fee: when an auction with the pot opens, "BIORĘ PO 200 ZŁ" for a
+    // moment while 200 flows from every account into the pot (counters roll).
+    if (lastPhase !== "auction" && !s.bankAuction && teams.every((t) => !t.inAuction || t.bid === 200)) feeUntil = Date.now() + 1800;
+    lastPhase = "auction";
+    const big = s.closing ? CLOSING[s.closing] : Date.now() < feeUntil ? "BIORĘ PO 200 ZŁ" : "";
+    if (!s.closing && Date.now() < feeUntil) setTimeout(() => { if (state && state.phase === "auction") render(); }, feeUntil - Date.now() + 20);
+    return `${bar(s)}${effects(s)}
+      <div class="cols n${teams.length}">${cols}${big ? `<div class="big-call ${s.closing === 4 ? "sold" : ""}"><span class="led">${big}</span></div>` : ""}</div>
       ${barOf([{ k: s.bankAuction ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" }], "foot pot")}`;
   }
+
 
   // 3. Question: one low bar "PULA 7300 ——— CZAS 0:51", the question big in the
   // answering team's colour, A–D in a 2×2 grid.
@@ -428,12 +557,13 @@
     const who = q.duel ? "1 NA 1 · KTO PIERWSZY, TEN ODPOWIADA" : id === mine ? "ODPOWIADACIE!" : "";
     const answers = q.answers
       ? `<div class="answers">${q.answers.map((a, i) => `<div class="a"><span class="chip led">${"ABCD"[i]}</span><span class="tx">${esc(a)}</span></div>`).join("")}</div>` : "";
-    const haggle = q.hintOffer ? barOf([{ k: "TARGUJEMY PODPOWIEDŹ", v: q.hintOffer + " ZŁ", cls: "hl" }], "haggle") : "";
+    const haggle = q.hintOffer ? barOf([{ v: `PODPOWIEDŹ ZA ${q.hintOffer} ZŁ?`, cls: "hl" }], "haggle") : "";
+    // TV: the bar in the answering team's colour with DO WYGRANIA, the clock apart.
     return `${barOf([
-        { k: "PULA", v: s.pot, n: "pot", at: "start" },
+        { k: "DO WYGRANIA", v: s.pot + " ZŁ", cls: `team ${tc(id)}`, at: "start", grow: true },
         { k: "", kid: "clockLbl", v: "", vid: "clockNum", at: "end", attrs: 'id="clock"' },
       ], "top qbar")}
-      ${haggle}
+      ${effects(s)}${haggle}
       <div class="q ${tc(id)} ${q.duel ? "duel" : ""}">
         ${who ? `<div class="who">${who}</div>` : ""}
         <div class="qtext"><span data-fit="90" data-min="15">${esc(q.text)}</span></div>
@@ -469,6 +599,81 @@
     if (!hostId) hostId = "debug";
     lastSentAt = 0; onSnapshot({ ...p, code, hostId, sentAt: Date.now() });
   };
+
+  // ---- the wheel (live from the host) ---------------------------------------
+  // The spin comes as data (fields, disc angle under the pointer from → to,
+  // start time, duration): this phone turns its own SVG wheel with the same
+  // ease-out-quart curve, in sync. Half wheel anchored at the bottom, pointer on
+  // top; the field under the pointer runs through the category cell.
+  let skew = 0, wheelRAF = 0;
+  const quart = (u) => 1 - Math.pow(1 - u, 4);
+  const TEAM_HEX = { blue: "#0a84ff", green: "#30d158", yellow: "#ffd60a" };
+  function wedgeStyle(f, catIndex) {
+    if (f.kind === "category") { const c = ["blue", "green", "yellow"][catIndex % 3]; return { fill: TEAM_HEX[c], ink: "#000" }; }
+    if (f.kind === "hint") return { fill: "#fff", ink: "#000" };
+    if (f.kind === "blackBox") return { fill: "#050505", ink: "#fff", box: true };
+    return { fill: "#000", ink: "#fff" };  // 1 NA 1 (Masters' black)
+  }
+  function wheelSVG(sp) {
+    const n = sp.fields.length, seg = 360 / n, R = 1, rim = 0.93;
+    const pt = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [Math.cos(a) * r, Math.sin(a) * r]; };
+    let cat = 0, wedges = "", labels = "", bulbs = "";
+    sp.fields.forEach((f, i) => {
+      const st = wedgeStyle(f, cat); if (f.kind === "category") cat++;
+      const [x0, y0] = pt(i * seg, rim), [x1, y1] = pt((i + 1) * seg, rim);
+      wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="${st.fill}" stroke="#1c1c1e" stroke-width=".006" data-i="${i}"/>`;
+      if (st.box) wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="none" stroke="#fff" stroke-width=".006" transform="scale(.97)"/>`;
+      const mid = i * seg + seg / 2;
+      const size = Math.min(0.075, 0.62 / Math.max(6, f.title.length) * 1.25);
+      labels += `<text transform="rotate(${mid - 90}) translate(.59 0)" fill="${st.ink}" font-size="${size}" text-anchor="middle" dominant-baseline="central">${esc(f.title)}</text>`;
+    });
+    for (let k = 0; k < n * 2; k++) {
+      const [x, y] = pt(k * seg / 2, 0.965);
+      bulbs += `<circle cx="${x}" cy="${y}" r=".014" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
+    }
+    return `<svg class="wheel-svg" viewBox="-1.08 -1.14 2.16 1.22" preserveAspectRatio="xMidYMax meet">
+      <g id="disc">
+        <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
+        ${wedges}<g class="wl">${labels}</g>${bulbs}
+        <path id="winWedge" d="" fill="none" stroke="#fff" stroke-width=".012" filter="url(#glow)"/>
+      </g>
+      <circle r=".2" fill="#000"/>
+      <path d="M-.065 -1.13 L.065 -1.13 L0 -.95 Z" fill="#fff" filter="url(#glow)"/>
+      <defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".012" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+    </svg>`;
+  }
+  function wheelScreen(s) {
+    return `<div class="bar top">${cell(roundCell(s))}<div class="cell grow">${s.spin.free ? `<span class="k">DLA ATMOSFERY</span>` : ""}<span class="v led" id="wheelTicker"></span></div></div>
+      <div class="wheel-area">${wheelSVG(s.spin)}</div>`;
+  }
+  function startWheel(sp) {
+    stopWheel();
+    const disc = document.getElementById("disc"), seg = 360 / sp.fields.length;
+    const t0 = sp.startedAt + skew, dur = sp.duration * 1000;
+    let lastTitle = "";
+    const frame = () => {
+      const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
+      const off = sp.from + (sp.to - sp.from) * quart(u);
+      if (disc) disc.style.transform = `rotate(${-off}deg)`;
+      const idx = ((Math.floor((((off % 360) + 360) % 360) / seg)) % sp.fields.length);
+      const title = sp.fields[idx].title;
+      if (title !== lastTitle) {
+        lastTitle = title;
+        const t = document.getElementById("wheelTicker");
+        if (t) t.textContent = title;
+      }
+      if (u < 1) wheelRAF = requestAnimationFrame(frame);
+      else {
+        // stopped: light the drawn wedge, show its name
+        const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = document.getElementById("winWedge");
+        if (w && win) win.setAttribute("d", w.getAttribute("d"));
+        const t = document.getElementById("wheelTicker");
+        if (t) t.textContent = sp.fields[sp.landed].title;
+      }
+    };
+    wheelRAF = requestAnimationFrame(frame);
+  }
+  function stopWheel() { cancelAnimationFrame(wheelRAF); }
 
   // ---- taps: switch team (no corner button, no confirmation) -------------------
   $("view").addEventListener("click", (e) => {
