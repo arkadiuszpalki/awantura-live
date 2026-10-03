@@ -225,7 +225,12 @@
 
   // ---- helpers ----------------------------------------------------------------
   const MASTERS = { id: "masters", name: "MISTRZOWIE", balance: 0, bid: 0, total: 0, playing: false, bankrupt: false };
-  const teamById = (s, id) => s.teams.find((t) => t.id === id);
+  // Before GRAJ the host has no game yet (no teams in the snapshot): offer the
+  // default three with the starting 5000 zł so players can pick while waiting.
+  const START = [["blue", "NIEBIESCY"], ["green", "ZIELONI"], ["yellow", "ŻÓŁCI"]]
+    .map(([id, name]) => ({ ...MASTERS, id, name, balance: 5000, total: 5000, playing: true }));
+  const teamsOf = (s) => s.teams.some((t) => t.id !== "masters") ? s.teams : START;
+  const teamById = (s, id) => teamsOf(s).find((t) => t.id === id);
   const tc = (id) => "t-" + (id || "masters");     // colour class; no team (1 NA 1) = black like Mistrzowie
   const nameOf = (s, id) => { const t = id && teamById(s, id); return t ? t.name : id === "masters" ? "MISTRZOWIE" : ""; };
   const led = (key, value, extra = "") => `<span class="led" data-num="${key}" data-target="${value}" ${extra}>${value}</span>`;
@@ -264,7 +269,7 @@
 
   // 0. Pick your team.
   function picker(s) {
-    const teams = [...s.teams];
+    const teams = [...teamsOf(s)];
     if (!teamById(s, "masters")) teams.push(MASTERS);
     const tiles = teams.map((t) => `
       <button class="pick ${tc(t.id)} ${t.id === mine ? "on" : ""}" data-id="${t.id}">
@@ -282,7 +287,8 @@
   // Top bar = round · category · the other teams · corner button; bottom bar
   // (same look) = what just happened: result, pot, right answer, box, final…
   function home(s, me) {
-    const others = s.teams.filter((t) => t.id !== me.id).map((t) => `
+    // In the final only the finalists matter; teams knocked out stay off the bar.
+    const others = teamsOf(s).filter((t) => t.id !== me.id && (s.stage !== "final" || t.playing)).map((t) => `
       <div class="other ${tc(t.id)} ${t.bankrupt ? "bankrupt" : ""}"><span class="nm">${esc(t.name)}${t.bankrupt ? " · BANKRUT" : ""}</span>${led("o-" + t.id, t.total)}</div>`).join("");
     const label = me.bankrupt ? "BANKRUT" : "WASZA KASA";
     const probe = "8".repeat(Math.max(4, String(Math.max(me.total, lastNums["me-" + me.id] || 0)).length));
