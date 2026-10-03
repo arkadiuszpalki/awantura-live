@@ -10,6 +10,7 @@
 // Each player first picks their team. Then the screen follows the game:
 //   no question (wheel, results, breaks) → whole screen in MY colour edge to
 //            edge, my money huge, top bar + bottom bar with what just happened
+//   Team switch = tap another team's tile (top bar) or column (auction).
 //   auction  → team columns: KONTO / OFERTA, PULA underneath
 //   question → PULA ——— CZAS bar, the question full screen in the answering colour
 (() => {
@@ -148,7 +149,6 @@
       : kind === "stale" ? "BRAK SYGNAŁU OD PROWADZĄCEGO"
       : kind === "wait" ? "CZEKAM NA GRĘ"
       : kind === "off" ? "BRAK POŁĄCZENIA · ŁĄCZĘ…" : "ŁĄCZĘ…";
-    document.querySelectorAll(".me-btn").forEach((b) => b.dataset.status = kind);
     const warn = $("conn");
     warn.hidden = !(kind === "stale" || kind === "off") || !state;
     warn.textContent = statusText;
@@ -195,7 +195,27 @@
   // ---- fit text to its box (like SwiftUI minimumScaleFactor) ------------------
   // <span data-fit="max px" data-min="min px">: largest size that fits the parent.
   // Last first: the news lines settle their height before the big amount fills what is left.
+  // Bar cells: label next to value; only when that does not fit, the label goes
+  // above the value (same sizes) — then `fit` shrinks the value if still needed.
+  function fitBars(root) {
+    const cells = [...root.querySelectorAll(".bar > .cell")];
+    cells.forEach((c) => c.classList.remove("stack"));
+    cells.forEach((c) => {
+      const v = c.querySelector(".v"), k = c.querySelector(".k");
+      if (!v || !k || !k.textContent) return;
+      if (v.dataset.fit) v.style.fontSize = "";
+      const cs = getComputedStyle(c);
+      const room = c.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+      if (k.offsetWidth + parseFloat(cs.columnGap || 0) + v.scrollWidth > room + 0.5) c.classList.add("stack");
+    });
+    // One bar, one layout: if a cell had to stack, the whole bar stacks.
+    root.querySelectorAll(".bar").forEach((b) => {
+      if (b.querySelector(".cell.stack")) b.querySelectorAll(":scope > .cell").forEach((c) => c.classList.add("stack"));
+    });
+  }
+
   function fitAll(root) {
+    fitBars(root);
     [...root.querySelectorAll("[data-fit]")].reverse().forEach((el) => {
       const box = el.parentElement, cs = getComputedStyle(box);
       const W = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
@@ -206,7 +226,8 @@
       if (W <= 0 || H <= 0) return;
       const shown = el.textContent;
       if (el.dataset.probe && el.dataset.probe.length > shown.length) el.textContent = el.dataset.probe;
-      let lo = Number(el.dataset.min || 10), hi = Number(el.dataset.fit);
+      if (el.dataset.fit === "css") el.style.fontSize = "";
+      let lo = Number(el.dataset.min || 10), hi = el.dataset.fit === "css" ? parseFloat(getComputedStyle(el).fontSize) : Number(el.dataset.fit);
       const fits = (s) => { el.style.fontSize = s + "px"; return el.offsetWidth <= W + 0.5 && el.scrollWidth <= el.offsetWidth + 1 && el.offsetHeight <= H + 0.5; };
       if (!fits(lo)) { el.style.fontSize = lo + "px"; el.textContent = shown; return; }
       while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (fits(mid)) lo = mid; else hi = mid; }
@@ -234,19 +255,39 @@
   const tc = (id) => "t-" + (id || "masters");     // colour class; no team (1 NA 1) = black like Mistrzowie
   const nameOf = (s, id) => { const t = id && teamById(s, id); return t ? t.name : id === "masters" ? "MISTRZOWIE" : ""; };
   const led = (key, value, extra = "") => `<span class="led" data-num="${key}" data-target="${value}" ${extra}>${value}</span>`;
-  const roundText = (s) =>
-    s.phase === "gameEnd" ? "KONIEC GRY" : s.phase === "stageEnd" ? "KONIEC ETAPU 1"
-    : s.phase === "setup" ? "PRZED STARTEM"
-    : `${s.stage === "final" ? "FINAŁ" : "RUNDA"} ${s.bonus ? "BONUSOWA" : `${s.questionNumber}/${s.rounds}`}`;
-  const meBtn = () => `<button class="me-btn ${tc(mine)}" data-pick data-status="${statusKind}" aria-label="Zmień drużynę"><span class="sq"></span><span class="dot"></span></button>`;
+  const roundCell = (s) =>
+    s.phase === "gameEnd" ? { v: "KONIEC GRY" } : s.phase === "stageEnd" ? { v: "KONIEC ETAPU 1" }
+    : s.phase === "setup" ? { v: "PRZED STARTEM" }
+    : { k: s.stage === "final" ? "FINAŁ" : "RUNDA", v: s.bonus ? "BONUSOWA" : `${s.questionNumber}/${s.rounds}` };
 
-  // Top bar: round · category · corner button.
-  function bar(s, extra = "") {
-    return `<div class="bar">
-      <div class="cell led round">${esc(roundText(s))}</div>
-      <div class="cell led cat">${s.fieldTitle ? `<span data-fit="22" data-min="11">${esc(s.fieldTitle)}</span>` : ""}</div>
-      ${extra}${meBtn()}
-    </div>`;
+  // ONE bar cell, used by every bar (top, bottom, question, PULA): a small
+  // system-font label next to an LED value, same sizes everywhere.
+  //   k     label (optional)          v     value (text or number)
+  //   n     animated number key       sign  "+" for gains
+  //   cls   highlight = background only: good | bad | box | hl | team t-<id> (| out)
+  //   id    tap switches to this team grow  takes a bigger share of the width
+  //   at    alignment: start | end (default centre)
+  // Text values shrink to fit (`fit`), never change font.
+  function cell(c) {
+    const v = c.n
+      ? `<span class="v led" data-num="${c.n}" data-target="${c.v}" ${c.sign ? 'data-sign="1"' : ""} ${c.vid ? `id="${c.vid}"` : ""}>${c.v}</span>`
+      : c.v === "" || c.v == null ? ""
+      : `<span class="vb"><span class="v led" data-fit="css" data-min="9" ${c.vid ? `id="${c.vid}"` : ""}>${c.v}</span></span>`;
+    const k = c.k != null ? `<span class="k" ${c.kid ? `id="${c.kid}"` : ""}>${c.k}</span>` : "";
+    const tag = c.id ? "button" : "div";
+    return `<${tag} class="cell ${c.cls || ""} ${c.grow ? "grow" : ""} ${c.at ? "at-" + c.at : ""}" ${c.id ? `data-id="${c.id}" aria-label="Zmień drużynę"` : ""} ${c.attrs || ""}>${k}${v}</${tag}>`;
+  }
+  const barOf = (cells, cls = "") => `<div class="bar ${cls}">${cells.map(cell).join("")}</div>`;
+
+  // A team tile on the top bar: just the money on the team's colour (the colour
+  // says whose it is). Bankrupt = dimmed colour + BANKRUT. Tap = become that team.
+  const teamCell = (t) => t.bankrupt
+    ? { v: "BANKRUT", cls: `team out ${tc(t.id)}`, id: t.id }
+    : { v: t.total, n: "o-" + t.id, cls: `team ${tc(t.id)}`, id: t.id };
+
+  // Top bar: round · category · (other teams).
+  function bar(s, teams = []) {
+    return barOf([roundCell(s), { v: s.fieldTitle ? esc(s.fieldTitle) : "", grow: true }, ...teams.map(teamCell)], "top");
   }
 
   // ---- render -------------------------------------------------------------
@@ -288,37 +329,17 @@
   // (same look) = what just happened: result, pot, right answer, box, final…
   function home(s, me) {
     // In the final only the finalists matter; teams knocked out stay off the bar.
-    const others = teamsOf(s).filter((t) => t.id !== me.id && (s.stage !== "final" || t.playing)).map((t) => `
-      <div class="other ${tc(t.id)} ${t.bankrupt ? "bankrupt" : ""}"><span class="nm">${esc(t.name)}${t.bankrupt ? " · BANKRUT" : ""}</span>${led("o-" + t.id, t.total)}</div>`).join("");
+    const others = teamsOf(s).filter((t) => t.id !== me.id && (s.stage !== "final" || t.playing));
     const label = me.bankrupt ? "BANKRUT" : "WASZA KASA";
     const probe = "8".repeat(Math.max(4, String(Math.max(me.total, lastNums["me-" + me.id] || 0)).length));
     const cells = foot(s, me);
-    // Nothing marked to fill the bar: the last plain (uncoloured) cell takes the
-    // rest; only coloured cells → an empty cell fills it (like the top bar).
-    if (cells.length && !cells.some((c) => c.grow)) {
-      const plain = [...cells].reverse().find((c) => !c.cls);
-      if (plain) plain.grow = true; else cells.push({ empty: true });
-    }
-    return `${bar(s, others ? `<div class="others">${others}</div>` : "")}
+    return `${bar(s, others)}
       <div class="hero">
         <div class="mine-label ${me.bankrupt ? "bankrupt" : ""}">${label}</div>
         <div class="amount">${led("me-" + me.id, me.total, `data-fit="320" data-min="40" data-hbox="hero" data-probe="${probe}"`)}</div>
         <div class="zl">ZŁ</div>
       </div>
-      ${cells.length ? `<div class="bar foot">${cells.map(footCell).join("")}</div>` : ""}`;
-  }
-
-  // One bottom-bar cell: small label over a value (LED, like the other teams'
-  // tiles in the top bar). n = animated LED number; tx = content text (answers,
-  // box prizes) in the system font like the question; grow = takes the rest.
-  function footCell(c) {
-    if (c.empty) return `<div class="cell kv grow"></div>`;
-    const v = c.n
-      ? `<span class="led v" data-num="${c.n}" data-target="${c.v}" ${c.sign ? 'data-sign="1"' : ""}>${c.v}</span>`
-      : c.grow
-        ? `<span class="vb"><span class="v ${c.tx ? "tx" : "led"}" data-fit="${c.tx ? 17 : 19}" data-min="9">${c.v}</span></span>`
-        : `<span class="v led">${c.v}</span>`;
-    return `<div class="cell kv ${c.cls || ""} ${c.grow ? "grow" : ""}">${c.k ? `<span class="k">${c.k}</span>` : ""}${v}</div>`;
+      ${cells.length ? barOf(cells, "foot") : ""}`;
   }
 
   // What happened, from MY team's point of view — cells for the bottom bar.
@@ -326,7 +347,7 @@
     const out = [];
     const isMe = (id) => id && id === me.id;
     const N = (id) => esc(nameOf(s, id));
-    const answer = (r) => r.correctAnswer && out.push({ k: "POPRAWNA ODPOWIEDŹ", v: esc(r.correctAnswer), tx: true, grow: true });
+    const answer = (r) => r.correctAnswer && out.push({ k: "POPRAWNA ODPOWIEDŹ", v: esc(r.correctAnswer), grow: true });
     // Each fact in one place: round / category / other teams live in the top
     // bar, my team is the colour of the screen — none of it is repeated here.
     switch (s.phase) {
@@ -364,7 +385,7 @@
         if (isMe(w)) out.push({ k: "WYNIK", v: w === "masters" ? "OBRONILIŚCIE TYTUŁ!" : s.stage === "final" ? "JESTEŚCIE NOWYMI MISTRZAMI!" : "WYGRALIŚCIE!", cls: "good", grow: true });
         else if (w) out.push(w === "masters" ? { k: "WYNIK", v: "MISTRZOWIE OBRONILI TYTUŁ" } : { k: "WYGRYWAJĄ", v: N(w) });
         s.boxes.filter((b) => isMe(b.owner)).forEach((b) =>
-          out.push({ k: "CZARNA SKRZYNKA", v: b.open ? esc(b.prize) : "JESZCZE ZAMKNIĘTA", tx: b.open, cls: "box", grow: true }));
+          out.push({ k: "CZARNA SKRZYNKA", v: b.open ? esc(b.prize) : "JESZCZE ZAMKNIĘTA", cls: "box", grow: true }));
         break;
       }
     }
@@ -376,59 +397,62 @@
     return out;
   }
 
-  // 2. Auction: KONTO / OFERTA columns, PULA underneath.
+  // 2. Auction: team columns (KONTO over OFERTA), PULA bar underneath. No team
+  // names: the colour says whose column it is; tap another column = become that team.
   function auction(s) {
     const teams = s.teams.filter((t) => t.playing);
+    const probe = "8".repeat(Math.max(4, String(Math.max(...teams.map((x) => x.bid))).length));
     const cols = teams.map((t) => {
-      const probe = "8".repeat(Math.max(4, String(Math.max(...teams.map((x) => x.bid))).length));
       const bid = t.inAuction
         ? `<span class="led" data-num="bid-${t.id}" data-target="${t.bid}" data-fit="120" data-min="18" data-probe="${probe}">${t.bid}</span>`
-        // Out of the auction the tile loses its colour, so the name says whose it is.
-        : `<span class="out-t">${esc(t.name)}<br>${t.bankrupt ? "BANKRUT" : "NIE LICYTUJE"}</span>`;
-      return `<div class="col ${tc(t.id)} ${t.id === mine ? "mine" : ""}">
-        <div class="konto"><span class="lbl">${t.id === mine ? "WASZE KONTO" : "KONTO"}</span>${led("bal-" + t.id, t.balance)}</div>
+        : `<span class="out-t">${t.bankrupt ? "BANKRUT" : "NIE LICYTUJE"}</span>`;
+      return `<div class="col ${tc(t.id)} ${t.id === mine ? "mine" : ""}" ${t.id !== mine ? `data-id="${t.id}"` : ""}>
+        <div class="konto">${t.id === mine ? `<span class="k">WASZE KONTO</span>` : ""}<span class="v led" data-num="bal-${t.id}" data-target="${t.balance}">${t.balance}</span></div>
         <div class="offer ${t.inAuction ? "" : "out"} ${t.leading ? "lead" : ""} ${t.vaBanque ? "vb" : ""}">
           <div class="ol">${t.leading ? "PROWADZI" : t.inAuction ? "OFERTA" : ""}</div>
           <div class="ov">${bid}</div>
-          ${t.vaBanque ? `<div class="ol vb">VA BANQUE</div>` : ""}
+          ${t.vaBanque ? `<div class="ol vbl">VA BANQUE</div>` : ""}
         </div>
       </div>`;
     }).join("");
     return `${bar(s)}
       <div class="cols n${teams.length}">${cols}</div>
-      <div class="pot ${s.bankAuction ? "bank" : ""}"><span class="lbl">${s.bankAuction ? "PULA (NIE GRA TERAZ)" : "PULA"}</span>${led("pot", s.pot)}</div>`;
+      ${barOf([{ k: s.bankAuction ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" }], "foot pot")}`;
   }
 
-  // 3. Question: PULA ——— CZAS, the question big in the answering team's colour.
+  // 3. Question: one low bar "PULA 7300 ——— CZAS 0:51", the question big in the
+  // answering team's colour, A–D in a 2×2 grid.
   function question(s) {
     const q = s.question;
     const id = q.duel ? null : q.team;
     const who = q.duel ? "1 NA 1 · KTO PIERWSZY, TEN ODPOWIADA" : id === mine ? "ODPOWIADACIE!" : "";
     const answers = q.answers
       ? `<div class="answers">${q.answers.map((a, i) => `<div class="a"><span class="chip led">${"ABCD"[i]}</span><span class="tx">${esc(a)}</span></div>`).join("")}</div>` : "";
-    const haggle = q.hintOffer ? `<div class="haggle"><span>TARGUJEMY PODPOWIEDŹ</span><b class="led">${q.hintOffer} ZŁ</b></div>` : "";
-    return `<div class="qbar">
-        <div class="cell qpot"><span class="lbl">PULA</span>${led("pot", s.pot)}</div>
-        <div class="cell clock" id="clock"><span class="lbl" id="clockLbl"></span><span class="led" id="clockNum"></span></div>
-        ${meBtn()}
-      </div>
+    const haggle = q.hintOffer ? barOf([{ k: "TARGUJEMY PODPOWIEDŹ", v: q.hintOffer + " ZŁ", cls: "hl" }], "haggle") : "";
+    return `${barOf([
+        { k: "PULA", v: s.pot, n: "pot", at: "start" },
+        { k: "", kid: "clockLbl", v: "", vid: "clockNum", at: "end", attrs: 'id="clock"' },
+      ], "top qbar")}
       ${haggle}
       <div class="q ${tc(id)} ${q.duel ? "duel" : ""}">
         ${who ? `<div class="who">${who}</div>` : ""}
-        <div class="qtext"><span data-fit="64" data-min="15">${esc(q.text)}</span></div>
+        <div class="qtext"><span data-fit="90" data-min="15">${esc(q.text)}</span></div>
         ${answers}
       </div>`;
   }
 
   // Local countdown (the host's phone is the truth; snapshots re-sync it).
   function tickClock() {
-    const n = $("clockNum");
-    if (!n || !state || !state.question || !clock) return;
+    const c = $("clock");
+    if (!c || !state || !state.question || !clock) return;
     const q = state.question;
     const left = clock.running ? Math.max(0, clock.left - Math.floor((Date.now() - clock.at) / 1000)) : clock.left;
-    if (n.textContent !== String(left)) n.textContent = left;
+    const t = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
+    let n = $("clockNum");
+    if (!n) { c.insertAdjacentHTML("beforeend", `<span class="v led" id="clockNum"></span>`); n = $("clockNum"); }
+    if (n.textContent !== t) n.textContent = t;
     $("clockLbl").textContent = q.hintOffer ? "ZEGAR STOI" : clock.running && left > 0 ? "CZAS" : left === 0 ? "KONIEC CZASU" : "PAUZA";
-    $("clock").className = "cell clock" + (left === 0 ? " zero" : left <= 10 ? " low" : "") + (q.hintOffer ? " stopped" : "");
+    c.className = "cell at-end" + (left === 0 ? " bad zero" : left <= 10 && !q.hintOffer ? " bad" : "");
   }
   setInterval(tickClock, 200);
 
@@ -446,11 +470,11 @@
     lastSentAt = 0; onSnapshot({ ...p, code, hostId, sentAt: Date.now() });
   };
 
-  // ---- taps: corner button / picker ---------------------------------------------
+  // ---- taps: switch team (no corner button, no confirmation) -------------------
   $("view").addEventListener("click", (e) => {
-    if (e.target.closest("[data-pick]")) { picking = true; render(); return; }
     if (e.target.closest("[data-close]")) { picking = false; render(); return; }
-    const b = e.target.closest("button[data-id]");
+    // Picker tiles, team tiles on the top bar, other teams' auction columns.
+    const b = e.target.closest("[data-id]");
     if (b) {
       mine = b.dataset.id;
       localStorage.setItem("awantura.mine", mine);
