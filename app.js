@@ -143,6 +143,8 @@
     const potEl = $("pot").querySelector("[data-num]");
     potEl.dataset.target = s.pot;
     $("category").textContent = s.fieldTitle || (s.phase === "wheel" ? "KOŁO" : "AWANTURA O KASĘ");
+    // The question card names the category itself — save the space on small phones.
+    $("category").hidden = s.phase === "question";
     // stage panel
     $("stage").innerHTML = panel(s);
     settleNums(document.body);

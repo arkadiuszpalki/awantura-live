@@ -148,3 +148,9 @@ body {
 .btn { height: 56px; padding: 0 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); font-size: 18px; border-radius: 0; }
 .nocode[hidden] { display: none; }
 .nocode input { min-width: 0; }
+.category[hidden] { display: none; }
+@media (max-height: 700px) {
+  .team .money { height: 44px; font-size: 21px; }
+  .pot { height: 46px; } .pot .num { font-size: 26px; }
+  .q .text { font-size: 18px; padding: 16px 12px; }
+}
