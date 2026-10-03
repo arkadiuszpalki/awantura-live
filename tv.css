@@ -1,0 +1,101 @@
+/* Awantura o kasę — TV "studio" screen in the browser (twin of
+   Awantura/Views/StudioView.swift, v11). Loaded AFTER style.css and reuses its
+   font, dark colours, team classes (.t-* with --tc/--tdim/--tbid/--tlite), the
+   ONE bar cell (.bar > .cell), the digit cells (.dg), the auction offers
+   (.offer), the big call and the wheel. Only the TV layout lives here: 16:9
+   stage, edge to edge, everything sized in --u = 1 px of a 1080p TV (like `u`
+   in StudioView). */
+
+:root {
+  --u: min(calc(100vw / 1920), calc(100vh / 1080));
+  /* bar cell sizes from StudioView's BarCell: 96 high, label 26, value 52 */
+  --bh: calc(96 * var(--u)); --bk: calc(26 * var(--u)); --bv: calc(52 * var(--u));
+  --sat: 0px; --sar: 0px; --sab: 0px; --sal: 0px;
+}
+
+.tv { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--bg); overflow: hidden; }
+.stage {
+  width: calc(1920 * var(--u)); height: calc(1080 * var(--u));
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--ink); overflow: hidden;
+}
+
+/* ---- Bars: the page's cell at TV size, full-width bands --------------------- */
+.tv .bar { flex: none; height: var(--bh); }
+.tv .bar > .cell { padding: 0 calc(28 * var(--u)); gap: calc(20 * var(--u)); }
+.tv .bar > .cell:first-child { padding-left: calc(28 * var(--u)); }
+.tv .bar > .cell:last-child { padding-right: calc(28 * var(--u)); }
+.tv .bar.stack > .cell { gap: calc(6 * var(--u)); }
+.tv .bar > .cell .k { font-weight: 600; letter-spacing: .115em; }
+.tv .bar > .cell.team { min-width: 0; }
+.tv .bar.sub { border-bottom: 1px solid var(--line); }
+.tv .bar.fx { height: calc(60 * var(--u)); }
+.tv .bar.fx > .cell .k { font-size: calc(22 * var(--u)); }
+.tv .bar.fx > .cell .v { font-size: calc(36 * var(--u)); }
+
+/* ---- Team tiles: the account on the team colour, no names ------------------- */
+.tiles { flex: none; display: flex; height: calc(150 * var(--u)); margin-bottom: calc(6 * var(--u)); }
+.tile { flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; background: var(--tc); color: #000; }
+.tile .led { font-size: calc(88 * var(--u)); }
+.tile.t-masters, .tv .qcard.t-masters, .tv .bigp.t-masters { color: #fff; box-shadow: inset 0 0 0 1.5px var(--masters-edge); }
+.tile.t-masters .led, .bigp.t-masters .led { text-shadow: var(--glow); }
+.tile.out { background: var(--tdim); color: var(--ink-out); }
+.tile.out .led { font-size: calc(64 * var(--u)); }
+
+/* ---- Panel ------------------------------------------------------------------ */
+.panel { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.msg { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 calc(40 * var(--u)); overflow: hidden; }
+.msg .led { font-size: calc(110 * var(--u)); text-shadow: var(--glow); }
+.msg.dim .led { color: var(--ink2); text-shadow: none; }
+
+/* Auction: the page's offers (lit leader / dimmed / out + word), at TV size */
+.tv .cols { flex: 1 1 0; min-height: 0; display: flex; margin: 0; }
+.tv .cols > .offer { flex: 1 1 0; min-width: 0; }
+.tv .offer .ov { padding: 0 calc(16 * var(--u)); }
+.tv .offer .ov .led { font-size: calc(140 * var(--u)); }
+.tv .offer.lead .ov .led { text-shadow: none; }
+.tv .offer.t-masters { outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
+.tv .offer.t-masters.lead { color: #fff; }
+.tv .offer.t-masters .led { text-shadow: var(--glow); }
+.tv .offer .st { bottom: calc(24 * var(--u)); font-size: calc(28 * var(--u)); letter-spacing: calc(3 * var(--u)); }
+/* VA BANQUE like StudioView: full colour ↔ 55 % colour every 200 ms (black digits stay readable) */
+.tv .offer.vb { animation: tvvb .4s steps(1, end) infinite; }
+@keyframes tvvb { 0% { background: var(--tc); } 50% { background: color-mix(in srgb, var(--tc) 55%, #000); } }
+.tv .big-call { height: calc(220 * var(--u)); }
+.tv .big-call .led { font-size: calc(110 * var(--u)); }
+
+/* 1 NA 1 crossing out: 2 per row, like StudioView */
+.tvstrike { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; align-content: start;
+  gap: calc(18 * var(--u)); padding: calc(30 * var(--u)); }
+.tvstrike .sk { height: calc(90 * var(--u)); background: none; }
+.tvstrike .sk .led { font-size: calc(52 * var(--u)); text-shadow: var(--glow); }
+.tvstrike .sk.out .led { color: var(--ink2); text-decoration: line-through; text-shadow: none; }
+
+/* Question: card in the answering team's colour, haggling = reversed bar above */
+.tv .bar.haggle { animation: blink 1.2s infinite; }
+.qcard { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: calc(28 * var(--u)); padding: calc(36 * var(--u));
+  background: var(--tc); color: #000; overflow: hidden; }
+.qcard .who { flex: none; text-align: center; font-size: calc(28 * var(--u)); font-weight: 800; letter-spacing: .107em; }
+.qcard .qtext { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.qcard .qtext [data-fit] { display: block; width: 100%; white-space: normal; font-size: calc(72 * var(--u)); font-weight: 700; line-height: 1.12; text-align: center; letter-spacing: 0; }
+.qcard .answers { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: calc(16 * var(--u)); }
+.qcard .a { display: flex; align-items: center; gap: calc(18 * var(--u)); min-width: 0; padding: calc(14 * var(--u));
+  background: var(--bg); color: var(--ink); border: 0; font-size: calc(36 * var(--u)); font-weight: 600; line-height: 1.15; }
+.qcard .a .chip { flex: none; width: calc(60 * var(--u)); height: calc(60 * var(--u)); display: flex; align-items: center; justify-content: center;
+  background: var(--ink); color: var(--bg); font-size: calc(40 * var(--u)); }
+.qcard .a .tx { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+/* Result (WYGRANA counter) / end: big panel in the team's colour */
+.bigp { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(20 * var(--u));
+  padding: 0 calc(40 * var(--u)); background: var(--tc); color: #000; overflow: hidden; }
+.bigp .cap { flex: none; font-size: calc(34 * var(--u)); font-weight: 800; letter-spacing: .118em; }
+.bigp .val { flex: none; max-width: 100%; display: flex; justify-content: center; }
+.bigp .val .led { font-size: calc(220 * var(--u)); }
+.bigp.head .val .led { font-size: calc(150 * var(--u)); }
+
+/* The wheel (live): full screen under the bar, half wheel anchored at the bottom */
+.stage > .wheel-area { flex: 1 1 0; min-height: 0; display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+.stage #wheelTicker { font-size: var(--bv); }
+
+/* No code yet */
+.tv-body .nocode .big { font-size: 28px; }
