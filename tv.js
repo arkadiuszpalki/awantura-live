@@ -10,7 +10,7 @@
 // Layout (1 unit = 1 px of a 1080p TV, see tv.css --u):
 //   edge to edge, 1 px lines only between bands (v11, like StudioView):
 //   top bar  RUNDA · category · PULA (question: DO WYGRANIA on the team colour + CZAS)
-//   effects  house rules (KARA ZA BIERNOŚĆ, +10 000 in the final)
+//   effects  AKCJE PROWADZĄCEGO (KARA, PREMIA…) and a bought hint
 //   tiles    each playing team's account on its colour (no names)
 //   panel    by phase: auction offers / 1 NA 1 crossing out / question card /
 //            WYGRANA counter + verdict bar / end (headline + boxes)
@@ -56,9 +56,19 @@
       clearTimeout(timer);
       if (sock && sock.readyState <= 1) return;
       sock = new WebSocket(`ws://${wsHost}:${wsPort}/`);
-      sock.onopen = () => { backoff = 400; lastMsgAt = Date.now(); setStatus(state ? "live" : "wait"); };
+      sock.onopen = () => {
+        backoff = 400; lastMsgAt = Date.now(); setStatus(state ? "live" : "wait");
+        // Say which game this screen watches: only screens on the current code count as viewers (v13).
+        try { sock.send(JSON.stringify({ hello: code })); } catch (_) {}
+      };
       sock.onmessage = (e) => {
         let p; try { p = JSON.parse(e.data); } catch (_) { return; }
+        // The host is on another game code: go over to it by ourselves (v13).
+        if (p && typeof p.newgame === "string" && ALPHABET.test(p.newgame) && p.newgame !== code) {
+          const q = new URLSearchParams(location.search); q.set("k", p.newgame);
+          location.replace(location.pathname + "?" + q.toString() + location.hash);
+          return;
+        }
         if (p && p.hb) { lastMsgAt = Date.now(); if (state && statusKind === "stale") setStatus("live"); tellParent({ hb: 1, code }); return; }
         onSnapshot(p);
       };
@@ -91,6 +101,7 @@
     try { window.parent.postMessage({ awantura: msg }, "*"); } catch (_) {}
   }
 
+  let leftUntil = 0, leftText = "";
   function onSnapshot(p) {
     if (!p || p.code !== code || typeof p.hostId !== "string") return;
     if (!hostId) { hostId = p.hostId; sessionStorage.setItem(hostKey, hostId); }
@@ -107,6 +118,10 @@
       const running = q.timerRunning && !q.hintOffer;
       if (!clock || clock.left !== q.timeLeft || clock.running !== running) clock = { left: q.timeLeft, running, at: Date.now() };
     } else clock = null;
+    if (state && state.phase === "strike" && p.phase === "question" && p.question) {
+      leftUntil = Date.now() + 1500; leftText = "ZOSTAŁA: " + p.question.category;
+      setTimeout(() => render(), 1550);
+    }
     const same = state && JSON.stringify({ ...state, sentAt: 0, seq: 0 }) === JSON.stringify({ ...p, sentAt: 0, seq: 0 });
     state = p;
     setStatus("live");
@@ -246,16 +261,37 @@
   const roundCell = (s) =>
     s.phase === "gameEnd" ? { v: "KONIEC GRY" } : s.phase === "stageEnd" ? { v: "KONIEC ETAPU 1" }
     : s.phase === "setup" ? { v: "START" }
-    : { k: s.stage === "final" ? "FINAŁ" : "RUNDA", v: s.bonus ? "BONUSOWA" : `${s.questionNumber}/${s.rounds}` };
+    : { k: s.stage === "final" ? "FINAŁ" : "RUNDA", v: s.bonus ? (s.stage === "final" ? "BONUS" : "BONUSOWA") : `${s.questionNumber}/${s.rounds}` };
 
   // ---- render (StudioView 1:1) ---------------------------------------------------
   function render() {
     const stage = $("stage"), s = state;
+    // "BIORĘ PO 200 ZŁ" fires on every new auction, not only the first one.
+    if (s && s.phase !== "auction") lastPhase = s.phase;
     if (!s) {
       stage.dataset.spin = "";
       stage.innerHTML = `<div class="panel"><div class="msg dim"><span class="led" data-fit="css" data-min="12">AWANTURA O KASĘ</span></div>
         <div class="fine" id="tvInfo">ŁĄCZĘ… · KOD ${esc(code)}</div></div>`;
       fitAll(stage); return;
+    }
+    if (s.boxOpening) {
+      // A black box opening at the end: full screen, drum roll (v13).
+      stage.dataset.spin = "";
+      stopWheel();
+      const b = s.boxOpening, name = esc(nameOf(s, b.owner));
+      stage.innerHTML = barOf([{ k: "CZARNA SKRZYNKA", v: name, cls: `team ${tc(b.owner)}`, grow: true }], "top") +
+        `<div class="panel"><div class="boxopen">${b.prize
+          ? `<div class="cap">W ŚRODKU JEST</div><div class="val"><span class="led" data-fit="css" data-min="30">${esc(b.prize)}</span></div><div class="cap dim">NAGRODA DODATKOWA · NIE ZMIENIA WYNIKU GRY</div>`
+          : `<div class="val"><span class="led drum">…</span></div>`}</div></div>`;
+      fitAll(stage);
+      playDrum(b);
+      return;
+    }
+    if (Date.now() < leftUntil && s.phase === "question") {
+      stage.dataset.spin = "";
+      stage.innerHTML = top(s) + `<div class="panel">${message(esc(leftText))}</div>`;
+      fitAll(stage); tickClock();
+      return;
     }
     if (s.spin) {
       // The wheel turning on the host's phone: full screen here too. Same spin
@@ -280,21 +316,23 @@
   // Top bar: RUNDA · category · PULA — during a question DO WYGRANIA on the
   // answering team's colour + the clock apart.
   function top(s) {
-    const cat = s.phase === "wheel" ? "" : s.fieldTitle ? esc(s.fieldTitle) : "";
+    let cat = s.phase === "wheel" ? "" : s.fieldTitle ? esc(s.fieldTitle) : "";
+    if (s.question && s.question.duel) cat = `1 NA 1 · ${esc(s.question.category)}`;  // the category too (v13)
     const cells = [roundCell(s), { v: cat, grow: true }];
     if (s.phase === "question" && s.question) {
       const q = s.question;
       cells.push({ k: "DO WYGRANIA", v: s.pot + " ZŁ", cls: `team ${tc(q.duel ? null : q.team)}` });
       cells.push({ k: "", kid: "clockLbl", v: "", vid: "clockNum", attrs: 'id="clock"' });
-    } else cells.push({ k: s.bankAuction ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" });
+    } else cells.push({ k: s.bankAuction && s.pot > 0 ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" });
     return barOf(cells, "top");
   }
 
-  // House rules' effects this round (KARA ZA BIERNOŚĆ, +10 000 in the final).
+  // AKCJE PROWADZĄCEGO this round (v13): KARA red, PREMIA green; a bought hint.
   function effects(s) {
     let out = "";
-    if (s.bonusAdded) out += barOf([{ k: "OSTATNIE PYTANIE FINAŁU", v: `+${s.bonusAdded} ZŁ DO PULI`, cls: "good" }], "fx");
-    (s.penalties || []).forEach((p) => { out += barOf([{ k: `KARA ZA BIERNOŚĆ · ${esc(nameOf(s, p.team))}`, v: `−${p.amount} ZŁ`, cls: "bad" }], "fx"); });
+    if (s.question && s.question.hintPaid) out += barOf([{ k: "PODPOWIEDŹ KUPIONA", v: `−${s.question.hintPaid} ZŁ`, cls: "hl" }], "fx");
+    (s.actions || []).forEach((a) => { out += barOf([{ k: a.team ? `${esc(a.label)} · ${esc(nameOf(s, a.team))}` : esc(a.label),
+      v: `${a.kind === "penalty" ? "−" : "+"}${a.amount} ZŁ`, cls: a.kind === "penalty" ? "bad" : "good" }], "fx"); });
     return out;
   }
 
@@ -307,6 +345,8 @@
     const r = s.result, wonId = s.phase === "roundResult" && r && r.kind === "correct" ? r.team : null;
     return `<div class="tiles">${playing.map((t) => t.bankrupt
       ? `<div class="tile out ${tc(t.id)}"><span class="led">BANKRUT</span></div>`
+      : t.forPot   // after VA BANQUE: 0 on the account, playing for the whole pot (v13)
+      ? `<div class="tile forpot ${tc(t.id)}"><span class="led">GRA O PULĘ</span></div>`
       : `<div class="tile ${tc(t.id)}"><span class="led" data-num="t-${t.id}" data-target="${t.balance}"
            ${t.id === wonId ? `data-from="${t.balance - r.amount}" data-delay="2200" data-jump="1"` : ""}>${t.balance}</span></div>`).join("")}</div>`;
   }
@@ -318,7 +358,7 @@
       case "question": return s.question ? question(s) : message("AWANTURA O KASĘ");
       case "roundResult": return s.result ? result(s) : message(esc(s.fieldTitle || "AWANTURA O KASĘ"));
       case "stageEnd": case "gameEnd": return end(s);
-      case "wheel": return s.fieldTitle ? message(esc(s.fieldTitle)) : message("KOŁO SIĘ KRĘCI", true);
+      case "wheel": return s.fieldTitle ? message(esc(s.fieldTitle)) : message("ZARAZ LOSUJEMY", true);
       default: return message("AWANTURA O KASĘ");
     }
   }
@@ -390,7 +430,8 @@
     const value = counter
       ? `<span class="led" data-num="${key}" data-target="${won ? r.amount : 0}" data-from="${won ? 0 : r.amount}" data-dur="${won ? 1500 : 3000}" data-delay="${won ? 200 : 600}">${won ? 0 : r.amount}</span>`
       : `<span class="led">${r.amount}</span>`;
-    return bigPanel(counter ? "WYGRANA · " + caption : caption, value, r.team) + barOf(cells, "foot");
+    // "WYGRANA" only for DOBRZE (v13).
+    return bigPanel(won ? "WYGRANA · " + caption : r.kind === "wrong" ? "ŹLE · " + caption : caption, value, r.team) + barOf(cells, "foot");
   }
 
   // Winner's colour with the outcome in big LED letters; black boxes in a bar underneath.
@@ -398,7 +439,8 @@
     const headline = s.phase === "stageEnd" ? "DO FINAŁU!" : s.winner === "masters" ? "OBRONILI TYTUŁ"
       : s.stage === "final" ? "NOWI MISTRZOWIE" : "WYGRYWAJĄ";
     const cells = s.boxes.map((b) => ({ k: `SKRZYNKA · ${esc(nameOf(s, b.owner))}`, v: b.open ? esc(b.prize || "") : "ZAMKNIĘTA", cls: "hl" }));
-    return bigPanel(null, `<span class="led" data-fit="css" data-min="20">${headline}</span>`, s.winner, "head") + (cells.length ? barOf(cells, "foot") : "");
+    const tie = s.tieBreak === "wins" ? "REMIS · WIĘCEJ DOBRYCH ODPOWIEDZI" : s.tieBreak === "draw" ? "REMIS · ROZSTRZYGNĘŁO LOSOWANIE" : null;
+    return bigPanel(tie, `<span class="led" data-fit="css" data-min="20">${headline}</span>`, s.winner, "head") + (cells.length ? barOf(cells, "foot") : "");
   }
 
   const bigPanel = (caption, value, team, cls = "") =>
@@ -413,10 +455,18 @@
     const t = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
     const n = $("clockNum");
     if (n && n.textContent !== t) n.textContent = t;
-    $("clockLbl").textContent = q.hintOffer ? "ZEGAR STOI" : clock.running && left > 0 ? "CZAS" : left === 0 ? "KONIEC CZASU" : "PAUZA";
+    $("clockLbl").textContent = q.hintOffer ? "ZEGAR STOI" : q.waiting ? "CZEKA" : clock.running && left > 0 ? "CZAS" : left === 0 ? "KONIEC CZASU" : "PAUZA";
     c.className = "cell" + (left === 0 ? " bad zero" : left <= 10 && !q.hintOffer ? " bad" : "");
   }
   setInterval(tickClock, 200);
+
+  // Drum roll when a box opens (best effort: a TV browser may need one click first).
+  let drum = null, drumFor = null;
+  function playDrum(b) {
+    if (b.prize || drumFor === b.startedAt) return;
+    drumFor = b.startedAt;
+    try { drum = drum || new Audio("drumroll.mp3"); drum.currentTime = 0; drum.play().catch(() => {}); } catch (_) {}
+  }
 
   // ---- the wheel (live from the host), same as app.js ------------------------
   // The spin comes as data (fields, disc angle under the pointer from → to,

@@ -64,9 +64,19 @@
       clearTimeout(timer);
       if (sock && sock.readyState <= 1) return;
       sock = new WebSocket(`ws://${location.hostname}:${wsPort}/`);
-      sock.onopen = () => { backoff = 400; lastMsgAt = Date.now(); setStatus(state ? "live" : "wait"); };
+      sock.onopen = () => {
+        backoff = 400; lastMsgAt = Date.now(); setStatus(state ? "live" : "wait");
+        // Say which game this screen watches: only screens on the current code count as viewers (v13).
+        try { sock.send(JSON.stringify({ hello: code })); } catch (_) {}
+      };
       sock.onmessage = (e) => {
         let p; try { p = JSON.parse(e.data); } catch (_) { return; }
+        // The host is on another game code: go over to it by ourselves (v13).
+        if (p && typeof p.newgame === "string" && ALPHABET.test(p.newgame) && p.newgame !== code) {
+          const q = new URLSearchParams(location.search); q.set("k", p.newgame);
+          location.replace(location.pathname + "?" + q.toString() + location.hash);
+          return;
+        }
         if (p && p.hb) {  // heartbeat from the host phone every 3 s
           lastMsgAt = Date.now();
           if (typeof p.viewers === "number" && p.viewers !== viewers) showViewers(p.viewers);
@@ -117,6 +127,7 @@
       });
   }
 
+  let leftUntil = 0, leftText = "";
   function onSnapshot(p) {
     if (!p || p.code !== code || typeof p.hostId !== "string") return;
     // Only the host that spoke first on this code may drive the page.
@@ -138,6 +149,11 @@
         clock = { left: q.timeLeft, running: q.timerRunning && !q.hintOffer, at: Date.now() };
       }
     } else clock = null;
+    // The last category left after crossing out: "ZOSTAŁA: …" for 1.5 s (v13).
+    if (state && state.phase === "strike" && p.phase === "question" && p.question) {
+      leftUntil = Date.now() + 1500; leftText = "ZOSTAŁA: " + p.question.category;
+      setTimeout(() => render(), 1550);
+    }
     const same = state && JSON.stringify({ ...state, sentAt: 0, seq: 0 }) === JSON.stringify({ ...p, sentAt: 0, seq: 0 });
     state = p;
     setStatus("live", lag);
@@ -293,7 +309,11 @@
   const roundCell = (s) =>
     s.phase === "gameEnd" ? { v: "KONIEC GRY" } : s.phase === "stageEnd" ? { v: "KONIEC ETAPU 1" }
     : s.phase === "setup" ? { v: "PRZED STARTEM" }
-    : { k: s.stage === "final" ? "FINAŁ" : "RUNDA", v: s.bonus ? "BONUSOWA" : `${s.questionNumber}/${s.rounds}` };
+    : { k: s.stage === "final" ? "FINAŁ" : "RUNDA", v: s.bonus ? (s.stage === "final" ? "BONUS" : "BONUSOWA") : `${s.questionNumber}/${s.rounds}` };
+  // In the final the teams that are out watch it all like on TV (v13).
+  const spectator = (s) => s.stage === "final" && s.phase !== "gameEnd" && mine && mine !== "masters" && (() => {
+    const t = teamById(s, mine); return t && !t.playing;
+  })();
 
   // ONE bar cell, used by every bar (top, bottom, question, PULA): a small
   // system-font label next to an LED value, same sizes everywhere.
@@ -318,6 +338,8 @@
   // says whose it is). Bankrupt = dimmed colour + BANKRUT. Tap = become that team.
   const teamCell = (t) => t.bankrupt
     ? { v: "BANKRUT", cls: `team out ${tc(t.id)}`, id: t.id }
+    : t.forPot   // after VA BANQUE: 0 on the account, but they play for the whole pot (v13)
+    ? { v: "GRA O PULĘ", cls: `team ${tc(t.id)}`, id: t.id }
     : { v: t.total, n: "o-" + t.id, cls: `team ${tc(t.id)}`, id: t.id };
 
   // Top bar: round · category · (other teams).
@@ -340,6 +362,20 @@
     }
     view.dataset.spin = "";
     stopWheel();
+    // A black box opening at the end: full screen with the drum roll (v13).
+    if (!picking && mine && s.boxOpening) {
+      view.className = "screen plain box-open";
+      view.innerHTML = boxOpeningView(s, s.boxOpening);
+      fitAll(view);
+      playDrum(s.boxOpening);
+      return;
+    }
+    if (!picking && mine && Date.now() < leftUntil && s.phase === "question") {
+      view.className = "screen plain";
+      view.innerHTML = `<div class="center-msg"><div class="led big" data-fit="80" data-min="20">${esc(leftText)}</div></div>`;
+      fitAll(view);
+      return;
+    }
     // TV moment after DOBRZE / ŹLE: WYGRANA on the answering team's colour —
     // counts up to the pot (or falls from it to zero), then the accounts jump.
     const r = s.result;
@@ -397,13 +433,25 @@
   function home(s, me) {
     // In the final only the finalists matter; teams knocked out stay off the bar.
     const others = teamsOf(s).filter((t) => t.id !== me.id && (s.stage !== "final" || t.playing));
+    if (spectator(s)) {
+      // Out of the final: not a dead screen — the final as on TV (v13).
+      const cells = foot(s, me);
+      if (cells.length && !cells.some((c) => c.grow)) cells[cells.length - 1].grow = true;
+      return `${bar(s, others)}${effects(s)}
+        <div class="hero">
+          <div class="mine-label">${s.fieldTitle ? "WYLOSOWANE" : "FINAŁ Z MISTRZAMI"}</div>
+          <div class="amount"><span class="led" data-fit="200" data-min="30" data-hbox="hero">${esc(s.fieldTitle || "ZARAZ LOSUJEMY")}</span></div>
+          <div class="zl"></div>
+        </div>
+        ${cells.length ? barOf(cells, "foot") : ""}`;
+    }
     const label = me.bankrupt ? "BANKRUT" : "WASZA KASA";
     const probe = "8".repeat(Math.max(4, String(Math.max(me.total, lastNums["me-" + me.id] || 0)).length));
     const cells = foot(s, me);
     // Every bar is filled: if nothing is marked to grow, the last plain cell
     // (or else the last cell) takes the rest — no empty holes.
     if (cells.length && !cells.some((c) => c.grow)) ([...cells].reverse().find((c) => !c.cls) || cells[cells.length - 1]).grow = true;
-    return `${bar(s, others)}
+    return `${bar(s, others)}${effects(s)}
       <div class="hero">
         <div class="mine-label ${me.bankrupt ? "bankrupt" : ""}">${label}</div>
         <div class="amount">${led("me-" + me.id, me.total, `data-fit="320" data-min="40" data-hbox="hero" data-probe="${probe}"`)}</div>
@@ -412,11 +460,13 @@
       ${cells.length ? barOf(cells, "foot") : ""}`;
   }
 
-  // House rules' effects this round: one bar each (KARA ZA BIERNOŚĆ / +10 000).
+  // What the host did this round (AKCJE PROWADZĄCEGO) + a bought hint: one bar each.
   function effects(s) {
     const cells = [];
-    if (s.bonusAdded) cells.push(barOf([{ k: "OSTATNIE PYTANIE FINAŁU", v: `+${s.bonusAdded} ZŁ DO PULI`, cls: "good" }], "fx"));
-    (s.penalties || []).forEach((p) => cells.push(barOf([{ k: `KARA ZA BIERNOŚĆ · ${esc(nameOf(s, p.team))}`, v: `−${p.amount} ZŁ`, cls: "bad" }], "fx")));
+    if (s.question && s.question.hintPaid) cells.push(barOf([{ k: "PODPOWIEDŹ KUPIONA", v: `−${s.question.hintPaid} ZŁ`, cls: "hl" }], "fx"));
+    // AKCJE PROWADZĄCEGO this round (v13): KARA red, PREMIA green.
+    (s.actions || []).forEach((a) => cells.push(barOf([{ k: a.team ? `${esc(a.label)} · ${esc(nameOf(s, a.team))}` : esc(a.label),
+      v: `${a.kind === "penalty" ? "−" : "+"}${a.amount} ZŁ`, cls: a.kind === "penalty" ? "bad" : "good" }], "fx")));
     return cells.join("");
   }
   // 1 NA 1 with crossing out: the list, crossed-out ones dimmed, whose turn.
@@ -439,10 +489,10 @@
     const from = won ? 0 : r.amount, to = won ? r.amount : 0;
     return `${bar(s, [])}
       <div class="hero">
-        <div class="mine-label">WYGRANA</div>
+        <div class="mine-label">${won ? "WYGRANA" : "ŹLE · " + esc(nameOf(s, r.team) || "NIKT")}</div>
         <div class="amount"><span class="led" data-num="moment" data-target="${to}" data-from="${from}" data-dur="${won ? 1500 : 3000}" data-delay="${won ? 200 : 600}"
           data-fit="320" data-min="40" data-hbox="hero" data-probe="${"8".repeat(Math.max(4, String(r.amount).length))}">${from}</span></div>
-        <div class="zl">${won ? "DOBRZE" : r.amount > 0 ? "ŹLE · PULA PRZECHODZI DALEJ" : "ŹLE"}</div>
+        <div class="zl">${won ? "DOBRZE" : r.amount > 0 ? "PULA PRZECHODZI DALEJ" : "PULA BYŁA PUSTA"}</div>
       </div>`;
   }
   // After the moment the accounts jump to the new values (no counting), like on TV.
@@ -499,10 +549,12 @@
         break;
       }
     }
-    // Hero already says BANKRUT; the bar says what it means.
-    if (me.bankrupt && s.phase !== "gameEnd") out.push({ k: "MNIEJ NIŻ 300 ZŁ", v: "NIE LICYTUJECIE", cls: "bad" });
-    // The finalists are the tiles on top; only say that we sit this one out.
-    if (!me.playing && s.stage === "final" && s.phase !== "gameEnd" && me.id !== "masters") out.push({ v: "NIE GRACIE W FINALE" });
+    // Hero already says BANKRUT; the bar says what it means (not after the stage: v13).
+    if (me.bankrupt && s.phase !== "gameEnd" && s.phase !== "stageEnd") out.push({ k: "MNIEJ NIŻ 300 ZŁ", v: "NIE LICYTUJECIE", cls: "bad" });
+    // The finalists are the tiles on top; we watch the final.
+    if (spectator(s)) out.push({ v: "KIBICUJECIE" });
+    // A free hint won on the wheel waits for us (v13).
+    if (me.hintTokens > 0 && s.phase !== "gameEnd") out.push({ k: "MACIE", v: me.hintTokens > 1 ? `PODPOWIEDŹ ×${me.hintTokens}` : "PODPOWIEDŹ" });
     if (me.id === "masters" && !teamById(s, "masters")) out.push({ v: "CZEKACIE NA FINAŁ" });
     return out;
   }
@@ -543,9 +595,10 @@
     lastPhase = "auction";
     const big = s.closing ? CLOSING[s.closing] : Date.now() < feeUntil ? "BIORĘ PO 200 ZŁ" : "";
     if (!s.closing && Date.now() < feeUntil) setTimeout(() => { if (state && state.phase === "auction") render(); }, feeUntil - Date.now() + 20);
-    return `${bar(s)}${effects(s)}
+    // The call sits at the top of the offers (v13): never over the numbers.
+    return `${spectator(s) ? barOf([roundCell(s), { v: s.fieldTitle ? esc(s.fieldTitle) : "", grow: true }, { v: "KIBICUJECIE", cls: "hl" }], "top") : bar(s)}${effects(s)}
       <div class="cols n${teams.length}">${cols}${big ? `<div class="big-call ${s.closing === 4 ? "sold" : ""}"><span class="led">${big}</span></div>` : ""}</div>
-      ${barOf([{ k: s.bankAuction ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" }], "foot pot")}`;
+      ${barOf([{ k: s.bankAuction && s.pot > 0 ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" }], "foot pot")}`;
   }
 
 
@@ -554,7 +607,7 @@
   function question(s) {
     const q = s.question;
     const id = q.duel ? null : q.team;
-    const who = q.duel ? "1 NA 1 · KTO PIERWSZY, TEN ODPOWIADA" : id === mine ? "ODPOWIADACIE!" : "";
+    const who = q.duel ? `1 NA 1 · ${esc(q.category)} · KTO PIERWSZY, TEN ODPOWIADA` : id === mine ? "ODPOWIADACIE!" : spectator(s) ? "KIBICUJECIE" : "";
     const answers = q.answers
       ? `<div class="answers">${q.answers.map((a, i) => `<div class="a"><span class="chip led">${"ABCD"[i]}</span><span class="tx">${esc(a)}</span></div>`).join("")}</div>` : "";
     const haggle = q.hintOffer ? barOf([{ v: `PODPOWIEDŹ ZA ${q.hintOffer} ZŁ?`, cls: "hl" }], "haggle") : "";
@@ -565,7 +618,7 @@
       ], "top qbar")}
       ${effects(s)}${haggle}
       <div class="q ${tc(id)} ${q.duel ? "duel" : ""}">
-        ${who ? `<div class="who">${who}</div>` : ""}
+        ${who ? `<div class="who ${id === mine && !q.duel ? "mine" : ""}">${who}</div>` : ""}
         <div class="qtext"><span data-fit="90" data-min="15">${esc(q.text)}</span></div>
         ${answers}
       </div>`;
@@ -581,7 +634,8 @@
     let n = $("clockNum");
     if (!n) { c.insertAdjacentHTML("beforeend", `<span class="v led" id="clockNum"></span>`); n = $("clockNum"); }
     if (n.textContent !== t) n.textContent = t;
-    $("clockLbl").textContent = q.hintOffer ? "ZEGAR STOI" : clock.running && left > 0 ? "CZAS" : left === 0 ? "KONIEC CZASU" : "PAUZA";
+    // v13: the clock waits until the host has read the question (START CZASU).
+    $("clockLbl").textContent = q.hintOffer ? "ZEGAR STOI" : q.waiting ? "CZEKA" : clock.running && left > 0 ? "CZAS" : left === 0 ? "KONIEC CZASU" : "PAUZA";
     c.className = "cell at-end" + (left === 0 ? " bad zero" : left <= 10 && !q.hintOffer ? " bad" : "");
   }
   setInterval(tickClock, 200);
@@ -599,6 +653,29 @@
     if (!hostId) hostId = "debug";
     lastSentAt = 0; onSnapshot({ ...p, code, hostId, sentAt: Date.now() });
   };
+
+  // ---- black box opening (end of the game), full screen ---------------------
+  function boxOpeningView(s, b) {
+    const name = esc(nameOf(s, b.owner));
+    const body = b.prize
+      ? `<div class="mine-label">W ŚRODKU JEST</div>
+         <div class="amount"><span class="led" data-fit="120" data-min="18" data-hbox="hero">${esc(b.prize)}</span></div>
+         <div class="zl">NAGRODA DODATKOWA · NIE ZMIENIA WYNIKU GRY</div>`
+      : `<div class="mine-label">OTWIERAMY…</div><div class="amount"><span class="led drum">…</span></div><div class="zl"></div>`;
+    return `${barOf([{ k: "CZARNA SKRZYNKA", v: name, cls: `team ${tc(b.owner)}`, grow: true }], "top")}<div class="hero">${body}</div>`;
+  }
+  // The drum roll like in the app (best effort: browsers may block sound
+  // until the screen was touched once).
+  let drum = null, drumFor = null;
+  function playDrum(b) {
+    if (b.prize || drumFor === b.startedAt) return;
+    drumFor = b.startedAt;
+    try {
+      drum = drum || new Audio("drumroll.mp3");
+      drum.currentTime = 0;
+      drum.play().catch(() => {});
+    } catch (_) {}
+  }
 
   // ---- the wheel (live from the host) ---------------------------------------
   // The spin comes as data (fields, disc angle under the pointer from → to,

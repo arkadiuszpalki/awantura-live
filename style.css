@@ -164,12 +164,13 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
   background: var(--tbid); color: var(--tlite); }
 .offer .ov { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0 8px; overflow: hidden; }
 .offer .st { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center;
-  font-size: var(--bk); font-weight: 800; letter-spacing: .12em; color: var(--ink-out); }
+  font-size: clamp(12px, 4vh, 16px); font-weight: 800; letter-spacing: .12em; color: var(--ink-out); }
 /* the leader (and VA BANQUE): full team colour, black digits */
 .offer.lead { background: var(--tc); color: #000; }
 .offer.lead .st { color: #000; }
 .col.t-masters .offer { outline: 1.5px solid var(--masters-edge); outline-offset: -1.5px; }
-.col.t-masters .offer.lead { color: #fff; }
+.col.t-masters .offer.lead { color: #fff; outline: 3px solid #fff; outline-offset: -3px; }
+.col.t-masters .offer:not(.lead):not(.out) { background: #383838; }
 .col.t-masters .offer .led { text-shadow: var(--glow); }
 /* out of the auction (bankrupt / not bidding / BLOKADA): darker still */
 .offer.out { background: var(--tdim); color: var(--tink); }
@@ -182,8 +183,9 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 @keyframes pulse { 0% { filter: brightness(1.35); transform: scale(1.03); } 100% { filter: none; transform: none; } }
 /* "po raz pierwszy…" / "biorę po 200 zł": one big LED call over the offers */
 .cols { position: relative; }
-.big-call { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); z-index: 2;
-  display: flex; align-items: center; justify-content: center; height: 34%;
+/* at the top of the offers, never over the numbers (v13) */
+.big-call { position: absolute; left: 0; right: 0; top: 0; z-index: 2;
+  display: flex; align-items: center; justify-content: center; height: 28%;
   background: rgba(0,0,0,.82); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .big-call .led { font-size: clamp(20px, min(11vh, 5.6vw), 52px); color: #fff; text-shadow: var(--glow); white-space: nowrap; }
 .big-call.sold { background: #fff; } .big-call.sold .led { color: #000; text-shadow: none; }
@@ -211,12 +213,15 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
   padding: 8px calc(10px + var(--sar)) calc(8px + var(--sab)) calc(10px + var(--sal)); background: var(--tc); color: #000; }
 .q.t-masters { color: #fff; }
 .q .who { flex: none; text-align: center; font-size: var(--bk); font-weight: 800; letter-spacing: .1em; }
+/* "ODPOWIADACIE!" — the most important word for the team: big (v13) */
+.q .who.mine { font-size: clamp(16px, 6vh, 26px); letter-spacing: .14em; }
 .qtext { flex: 1 1 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .qtext [data-fit] { display: block; width: 100%; white-space: normal; font-weight: 700; line-height: 1.08; text-align: center; letter-spacing: 0; }
 .answers { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* A–D readable at arm's length (v13): at least 20 px, the question gives way */
 .a { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 6px 10px; background: var(--bg); color: var(--ink);
-  border: 1px solid var(--soft); font-size: 15px; font-weight: 700; line-height: 1.15; }
-.a .chip { flex: none; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--bg); font-size: 16px; }
+  border: 1px solid var(--soft); font-size: clamp(18px, 5.4vh, 22px); font-weight: 700; line-height: 1.1; }
+.a .chip { flex: none; width: 1.3em; height: 1.3em; display: flex; align-items: center; justify-content: center; background: var(--ink); color: var(--bg); font-size: 1em; }
 
 /* Connection warning + debug */
 .conn { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
@@ -267,3 +272,8 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
   .turn .arrow { animation: none; }
 }
 
+
+/* Black box opening at the end (v13): full screen, the drum roll pulses */
+.box-open .hero { gap: 10px; }
+.box-open .led.drum { font-size: clamp(60px, 30vh, 160px); text-shadow: var(--glow); animation: blink .3s infinite; }
+.box-open .amount .led { text-shadow: var(--glow); }
