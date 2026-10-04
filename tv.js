@@ -487,55 +487,62 @@
   const quart = (u) => 1 - Math.pow(1 - u, 4);
   // v15: a hand spin slows down with constant friction (ease-out quad).
   const quad = (u) => 1 - (1 - u) * (1 - u);
-  // v16 (Arek): category wedges are NOT the teams' colours — pink, orange,
-  // purple, mint in turn; neighbours (round the circle too) never match.
-  // Same rule as WheelColors.categoryColors in the app.
-  const WHEEL_HEX = ["#ff375f", "#ff9f0a", "#bf5af2", "#63e6e2"];
+  // v17 (Arek — like the TV wheel): category wedges deep indigo / light
+  // lavender in turn (never the teams' colours), PODPOWIEDŹ dark green,
+  // 1 NA 1 turquoise, CZARNA SKRZYNKA black. Same rule as WheelColors in the app.
+  const WHEEL_HEX = ["#3e3a9a", "#f3eef8"], WHEEL_INK = ["#f3eef8", "#3e3a9a"];
   function wheelColors(fields) {
-    const n = fields.length, out = new Array(n).fill(null);
     let k = 0;
-    fields.forEach((f, i) => { if (f.kind === "category") out[i] = k++ % 4; });
-    fields.forEach((f, i) => {
-      if (f.kind !== "category" || n < 2) return;
-      const prev = out[(i - 1 + n) % n], next = out[(i + 1) % n];
-      if (out[i] === prev || out[i] === next) out[i] = [0, 1, 2, 3].find((c) => c !== prev && c !== next);
-    });
-    return out;
+    return fields.map((f) => (f.kind === "category" ? k++ % 2 : null));
   }
   function wedgeStyle(f, color) {
-    if (f.kind === "category") return { fill: WHEEL_HEX[color || 0], ink: "#000" };
-    if (f.kind === "hint") return { fill: "#fff", ink: "#000" };
+    if (f.kind === "category") return { fill: WHEEL_HEX[color || 0], ink: WHEEL_INK[color || 0] };
+    if (f.kind === "hint") return { fill: "#2e7d32", ink: "#fff" };
     if (f.kind === "blackBox") return { fill: "#050505", ink: "#fff", box: true };
-    return { fill: "#000", ink: "#fff" };  // 1 NA 1 (Masters' black)
+    return { fill: "#25a9c9", ink: "#000" };  // 1 NA 1
+  }
+  // A ring band round the pointer direction (+x): radii r0…r1, half-angle h (rad).
+  function band(r0, r1, h) {
+    const p = (r, a) => `${(Math.cos(a) * r).toFixed(4)} ${(Math.sin(a) * r).toFixed(4)}`;
+    return `M${p(r1, -h)} A${r1} ${r1} 0 0 1 ${p(r1, h)} L${p(r0, h)} A${r0} ${r0} 0 0 0 ${p(r0, -h)} Z`;
   }
   function wheelSVG(sp) {
-    const n = sp.fields.length, seg = 360 / n, rim = 0.93;
+    const n = sp.fields.length, seg = 360 / n, rim = 0.93, segRad = seg * Math.PI / 180;
     const pt = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [Math.cos(a) * r, Math.sin(a) * r]; };
     const colors = wheelColors(sp.fields);
     let wedges = "", labels = "", bulbs = "";
+    // Labels like the TV: one common size (the median fit), smaller only when
+    // a long title would not fit its narrow wedge. LED glyph ≈ 0.70 em wide.
+    const inner = 0.23, outer = rim - 0.03, sh = Math.sin(segRad / 2), kk = 0.72;
+    const fit = (t) => { const m = t.length * 0.70; return Math.min(0.075, (outer - inner) / m, 2 * outer * sh * kk / (1 + 2 * m * sh * kk)); };
+    const sizes = sp.fields.map((f) => fit(f.title)), common = [...sizes].sort((a, b) => a - b)[Math.floor(sizes.length / 2)];
     sp.fields.forEach((f, i) => {
       const st = wedgeStyle(f, colors[i]);
       const [x0, y0] = pt(i * seg, rim), [x1, y1] = pt((i + 1) * seg, rim);
-      wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="${st.fill}" stroke="#1c1c1e" stroke-width=".006" data-i="${i}"/>`;
-      if (st.box) wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="none" stroke="#fff" stroke-width=".006" transform="scale(.97)"/>`;
-      const mid = i * seg + seg / 2;
-      const size = Math.min(0.075, 0.62 / Math.max(6, f.title.length) * 1.25);
-      labels += `<text transform="rotate(${mid - 90}) translate(.59 0)" fill="${st.ink}" font-size="${size}" text-anchor="middle" dominant-baseline="central">${esc(f.title)}</text>`;
+      wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="${st.fill}" stroke="#1c1c1e" stroke-width=".004" data-i="${i}"/>`;
+      if (st.box) wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="none" stroke="#fff" stroke-width=".005" transform="scale(.97)"/>`;
+      const mid = i * seg + seg / 2, size = Math.min(common, sizes[i]);
+      labels += `<text transform="rotate(${mid - 90}) translate(${outer} 0)" fill="${st.ink}" font-size="${size.toFixed(4)}" text-anchor="end" dominant-baseline="central">${esc(f.title)}</text>`;
     });
-    for (let k = 0; k < n * 2; k++) {
-      const [x, y] = pt(k * seg / 2, 0.965);
-      bulbs += `<circle cx="${x}" cy="${y}" r=".014" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
+    for (let k = 0; k < n; k++) {
+      const [x, y] = pt(k * seg, 0.965);
+      bulbs += `<circle cx="${x}" cy="${y}" r=".012" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
     }
-    // v16 (Arek's pattern): the wheel seen from the side — big, the hub at the
-    // left edge, the pointer on the right pointing at it, flat (no glow).
+    const h = segRad / 2, win = band(0.24, 0.955, h);
+    const line = (s) => { const a = s * h; return `<line x1="${Math.cos(a) * .26}" y1="${Math.sin(a) * .26}" x2="${Math.cos(a) * .95}" y2="${Math.sin(a) * .95}" stroke="#ffe45c" stroke-width=".006"/>`; };
+    // The wheel seen from the side (v16) with the TV pointer (v17): a black
+    // fork along the radius, a window one wedge wide with yellow LED lines,
+    // lit a little once the result is in. Flat — no glow.
     return `<svg class="wheel-svg" viewBox="-.46 -.59 2.09 1.18" preserveAspectRatio="xMinYMid meet">
       <g id="disc">
         <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
         ${wedges}<g class="wl">${labels}</g>${bulbs}
-        <path id="winWedge" d="" fill="none" stroke="#fff" stroke-width=".012"/>
       </g>
-      <circle r=".19" fill="#000"/>
-      <path d="M.935 0 L1.14 -.07 L1.14 .07 Z" fill="#fff"/>
+      <path id="winLit" d="${win}" fill="#fff" fill-opacity=".12" style="display:none"/>
+      <path d="${band(0.2, 0.985, h * 1.8)} ${win}" fill="#000" fill-rule="evenodd"/>
+      <path d="${band(0.94, 1.08, h * 2.2)}" fill="#000"/>
+      ${line(-1)}${line(1)}
+      <circle r=".2" fill="#000"/>
     </svg>`;
   }
   // `idle`: the title when the wheel stands with no result yet (v16: empty).
@@ -547,7 +554,7 @@
     // v16 "rest": the wheel stands, no result yet (no lit wedge, no title).
     const hold = sp.curve === "hold", rest = sp.curve === "rest";
     if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
-    const win0 = $("winWedge"); if (win0) win0.setAttribute("d", "");
+    const win0 = $("winLit"); if (win0) win0.style.display = "none";
     let lastTitle = null;
     const show = (title) => { if (title !== lastTitle) { lastTitle = title; const t = $("wheelTicker"); if (t) t.textContent = title; } };
     const frame = () => {
@@ -559,8 +566,7 @@
       if (rest) { show(idle); return; }
       if (u < 1 || hold) { show(sp.fields[idx].title); if (u < 1) wheelRAF = requestAnimationFrame(frame); return; }
       // stopped: light the drawn wedge, show its name
-      const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = $("winWedge");
-      if (w && win) win.setAttribute("d", w.getAttribute("d"));
+      const win = $("winLit"); if (win) win.style.display = "";
       show(sp.fields[sp.landed].title);
     };
     wheelRAF = requestAnimationFrame(frame);
