@@ -266,8 +266,6 @@
   // ---- render (StudioView 1:1) ---------------------------------------------------
   function render() {
     const stage = $("stage"), s = state;
-    // "BIORĘ PO 200 ZŁ" fires on every new auction, not only the first one.
-    if (s && s.phase !== "auction") lastPhase = s.phase;
     if (!s) {
       stage.dataset.spin = "";
       stage.innerHTML = `<div class="panel"><div class="msg dim"><span class="led" data-fit="css" data-min="12">AWANTURA O KASĘ</span></div>
@@ -368,10 +366,8 @@
 
   // Auction (TV look, v11): the leading offer lit in full colour, the others
   // dimmed (dark team colour, light digits), out / BLOKADA darker with a word;
-  // VA BANQUE blinks every 200 ms. "Po raz pierwszy…" and "biorę po 200 zł"
-  // = one big LED call across the offers.
-  const CLOSING = ["", "PO RAZ PIERWSZY…", "PO RAZ DRUGI…", "PO RAZ TRZECI…", "SPRZEDANE!"];
-  let lastPhase = "", feeUntil = 0, prevBids = {};
+  // VA BANQUE blinks every 200 ms. Nothing else moves on its own (v14).
+  let prevBids = {};
   function auction(s) {
     const teams = s.teams.filter((t) => t.playing);
     const pulsed = new Set(teams.filter((t) => t.leading && prevBids[t.id] != null && t.bid > prevBids[t.id]).map((t) => t.id));
@@ -385,11 +381,7 @@
           aria-label="${esc(t.name)}: ${t.inAuction ? `oferta ${t.bid} zł` : word.toLowerCase()}${t.leading ? ", prowadzi" : ""}">
           <div class="ov">${bid}</div>${word ? `<div class="st">${word}</div>` : ""}</div>`;
     }).join("");
-    if (lastPhase !== "auction" && !s.bankAuction && teams.every((t) => !t.inAuction || t.bid === 200)) feeUntil = Date.now() + 1800;
-    lastPhase = "auction";
-    const big = s.closing ? CLOSING[s.closing] : Date.now() < feeUntil ? "BIORĘ PO 200 ZŁ" : "";
-    if (!s.closing && Date.now() < feeUntil) setTimeout(() => { if (state && state.phase === "auction") render(); }, feeUntil - Date.now() + 20);
-    return `<div class="cols">${cols}${big ? `<div class="big-call ${s.closing === 4 ? "sold" : ""}"><span class="led">${big}</span></div>` : ""}</div>`;
+    return `<div class="cols">${cols}</div>`;
   }
 
   // 1 NA 1 with crossing out: whose turn on their colour, the list (2 per row).

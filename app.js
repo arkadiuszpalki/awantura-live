@@ -351,7 +351,6 @@
   function render() {
     const view = $("view");
     const s = state;
-    if (s && s.phase !== "auction") lastPhase = s.phase;
     if (!s) { view.className = "screen plain pad"; view.innerHTML = connecting(); return; }
     if (!picking && mine && s.spin) {
       // The wheel turning (or just stopped) on the host's phone: full screen here
@@ -566,9 +565,6 @@
   // TV-style (Arek, v11): the leading offer is the one lit in full colour, the
   // other offers sit dimmed (dark team colour, light digits); a team that is
   // out (bankrupt / not bidding / BLOKADA) is darker still with a small word.
-  // Closing ("po raz pierwszy…") and the entry fee ("biorę po 200 zł") show big.
-  const CLOSING = ["", "PO RAZ PIERWSZY…", "PO RAZ DRUGI…", "PO RAZ TRZECI…", "SPRZEDANE!"];
-  let lastPhase = "", feeUntil = 0;
   function auction(s) {
     const teams = s.teams.filter((t) => t.playing);
     const pulsed = new Set(teams.filter((t) => t.leading && prevBids[t.id] != null && t.bid > prevBids[t.id]).map((t) => t.id));
@@ -589,15 +585,8 @@
         </div>
       </div>`;
     }).join("");
-    // Entry fee: when an auction with the pot opens, "BIORĘ PO 200 ZŁ" for a
-    // moment while 200 flows from every account into the pot (counters roll).
-    if (lastPhase !== "auction" && !s.bankAuction && teams.every((t) => !t.inAuction || t.bid === 200)) feeUntil = Date.now() + 1800;
-    lastPhase = "auction";
-    const big = s.closing ? CLOSING[s.closing] : Date.now() < feeUntil ? "BIORĘ PO 200 ZŁ" : "";
-    if (!s.closing && Date.now() < feeUntil) setTimeout(() => { if (state && state.phase === "auction") render(); }, feeUntil - Date.now() + 20);
-    // The call sits at the top of the offers (v13): never over the numbers.
     return `${spectator(s) ? barOf([roundCell(s), { v: s.fieldTitle ? esc(s.fieldTitle) : "", grow: true }, { v: "KIBICUJECIE", cls: "hl" }], "top") : bar(s)}${effects(s)}
-      <div class="cols n${teams.length}">${cols}${big ? `<div class="big-call ${s.closing === 4 ? "sold" : ""}"><span class="led">${big}</span></div>` : ""}</div>
+      <div class="cols n${teams.length}">${cols}</div>
       ${barOf([{ k: s.bankAuction && s.pot > 0 ? "PULA · NIE GRA TERAZ" : "PULA", v: s.pot, n: "pot" }], "foot pot")}`;
   }
 

@@ -61,8 +61,6 @@
 /* VA BANQUE like StudioView: full colour ↔ 55 % colour every 200 ms (black digits stay readable) */
 .tv .offer.vb { animation: tvvb .4s steps(1, end) infinite; }
 @keyframes tvvb { 0% { background: var(--tc); } 50% { background: color-mix(in srgb, var(--tc) 55%, #000); } }
-.tv .big-call { height: calc(220 * var(--u)); }
-.tv .big-call .led { font-size: calc(110 * var(--u)); }
 
 /* 1 NA 1 crossing out: 2 per row, like StudioView */
 .tvstrike { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; align-content: start;
@@ -107,8 +105,6 @@
 .tv .offer.t-masters:not(.lead):not(.out) { background: #383838; }
 /* playing for the pot after VA BANQUE: never "BANKRUT" */
 .tile.forpot .led { font-size: calc(64 * var(--u)); }
-/* the call sits at the top of the offers, never over the numbers */
-.tv .big-call { top: 0; transform: none; }
 /* black box opening, full screen */
 .boxopen { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(30 * var(--u)); padding: 0 calc(60 * var(--u)); }
 .boxopen .cap { font-size: calc(34 * var(--u)); font-weight: 800; letter-spacing: .118em; color: var(--ink2); }

@@ -181,16 +181,8 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 /* an overbid: a short pulse of the tile (the host's phone plays the bid sound) */
 .offer.pulse { animation: pulse .22s cubic-bezier(.25, 0, 0, 1); }
 @keyframes pulse { 0% { filter: brightness(1.35); transform: scale(1.03); } 100% { filter: none; transform: none; } }
-/* "po raz pierwszy…" / "biorę po 200 zł": one big LED call over the offers */
-.cols { position: relative; }
-/* at the top of the offers, never over the numbers (v13) */
-.big-call { position: absolute; left: 0; right: 0; top: 0; z-index: 2;
-  display: flex; align-items: center; justify-content: center; height: 28%;
-  background: rgba(0,0,0,.82); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.big-call .led { font-size: clamp(20px, min(11vh, 5.6vw), 52px); color: #fff; text-shadow: var(--glow); white-space: nowrap; }
-.big-call.sold { background: #fff; } .big-call.sold .led { color: #000; text-shadow: none; }
 
-/* House rules' effects: thin bars under the top bar */
+/* Host actions (KARA, PREMIA) and a bought hint: thin bars under the top bar */
 .bar.fx { height: 30px; border-bottom: 1px solid var(--line); }
 .bar.fx > .cell { flex: 1 1 0; }
 /* 1 NA 1 crossing out: the list, crossed-out ones dimmed and struck */
