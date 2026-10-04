@@ -710,11 +710,10 @@
       <g id="disc">
         <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
         ${wedges}<g class="wl">${labels}</g>${bulbs}
-        <path id="winWedge" d="" fill="none" stroke="#fff" stroke-width=".012" filter="url(#glow)"/>
+        <path id="winWedge" d="" fill="none" stroke="#fff" stroke-width=".012"/>
       </g>
       <circle r=".2" fill="#000"/>
-      <path d="M-.065 -1.13 L.065 -1.13 L0 -.95 Z" fill="#fff" filter="url(#glow)"/>
-      <defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation=".012" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <path d="M-.065 -1.13 L.065 -1.13 L0 -.95 Z" fill="#fff"/>
     </svg>`;
   }
   function wheelScreen(s) {
