@@ -501,11 +501,27 @@
     if (f.kind === "blackBox") return { fill: "#050505", ink: "#fff", box: true };
     return { fill: "#25a9c9", ink: "#000" };  // 1 NA 1
   }
-  // A ring band round the pointer direction (+x): radii r0…r1, half-angle h (rad).
-  function band(r0, r1, h) {
-    const p = (r, a) => `${(Math.cos(a) * r).toFixed(4)} ${(Math.sin(a) * r).toFixed(4)}`;
-    return `M${p(r1, -h)} A${r1} ${r1} 0 0 1 ${p(r1, h)} L${p(r0, h)} A${r0} ${r0} 0 0 0 ${p(r0, -h)} Z`;
+  // A ring band round the pointer direction (+x): radii r0…r1, angles a…b
+  // (rad, clockwise +); band(r0, r1, h) = symmetric half-angle h.
+  function band(r0, r1, a, b) {
+    if (b === undefined) { b = a; a = -a; }
+    const p = (r, t) => `${(Math.cos(t) * r).toFixed(4)} ${(Math.sin(t) * r).toFixed(4)}`;
+    return `M${p(r1, a)} A${r1} ${r1} 0 0 1 ${p(r1, b)} L${p(r0, b)} A${r0} ${r0} 0 0 0 ${p(r0, a)} Z`;
   }
+  // The flapper (v18): same formula as WheelFlapper in the app — a peg at every
+  // wedge edge pushes it, after the peg it snaps back. dirOff: +1 when the
+  // offset (disc angle under the pointer) grows.
+  function flapAngle(off, seg, dirOff) {
+    if (!seg || !dirOff) return 0;
+    let m = off % seg; if (m < 0) m += seg;
+    const u = 1 - (dirOff < 0 ? m : seg - m) / seg, push = 0.35, back = 0.18;
+    let prof = 0;
+    if (u >= 1 - push) prof = (u - (1 - push)) / push;
+    else if (u < back) { const t = u / back; prof = (1 - t) - 0.25 * Math.sin(t * Math.PI); }
+    return 18 * prof * (dirOff < 0 ? -1 : 1);
+  }
+  const WIN_SHARE = 0.72;
+  let wheelDir = -1, wheelLastOff = null;
   function wheelSVG(sp) {
     const n = sp.fields.length, seg = 360 / n, rim = 0.93, segRad = seg * Math.PI / 180;
     const pt = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [Math.cos(a) * r, Math.sin(a) * r]; };
@@ -513,7 +529,7 @@
     let wedges = "", labels = "", bulbs = "";
     // Labels like the TV: one common size (the median fit), smaller only when
     // a long title would not fit its narrow wedge. LED glyph ≈ 0.70 em wide.
-    const inner = 0.23, outer = rim - 0.03, sh = Math.sin(segRad / 2), kk = 0.72;
+    const inner = 0.23, outer = rim - 0.03, sh = Math.sin(segRad / 2), kk = 0.6;
     const fit = (t) => { const m = t.length * 0.70; return Math.min(0.075, (outer - inner) / m, 2 * outer * sh * kk / (1 + 2 * m * sh * kk)); };
     const sizes = sp.fields.map((f) => fit(f.title)), common = [...sizes].sort((a, b) => a - b)[Math.floor(sizes.length / 2)];
     sp.fields.forEach((f, i) => {
@@ -528,21 +544,22 @@
       const [x, y] = pt(k * seg, 0.965);
       bulbs += `<circle cx="${x}" cy="${y}" r=".012" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
     }
-    const h = segRad / 2, win = band(0.24, 0.955, h);
+    const h = segRad * WIN_SHARE / 2;
     const line = (s) => { const a = s * h; return `<line x1="${Math.cos(a) * .26}" y1="${Math.sin(a) * .26}" x2="${Math.cos(a) * .95}" y2="${Math.sin(a) * .95}" stroke="#ffe45c" stroke-width=".006"/>`; };
-    // The wheel seen from the side (v16) with the TV pointer (v17): a black
-    // fork along the radius, a window one wedge wide with yellow LED lines,
-    // lit a little once the result is in. Flat — no glow.
-    return `<svg class="wheel-svg" viewBox="-.46 -.59 2.09 1.18" preserveAspectRatio="xMinYMid meet">
+    // The wheel seen from the side, zoomed in (v18). Pointer (Arek's final
+    // call): no fork — two yellow LED lines mark a window 72 % of a wedge
+    // (with a result: the drawn wedge lit, a neighbour dimmed) and a long
+    // white flapper whose tip reaches into the field. Flat — no glow.
+    return `<svg class="wheel-svg" viewBox="-.082 -.435 1.546 .87" preserveAspectRatio="xMinYMid meet">
       <g id="disc">
         <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
         ${wedges}<g class="wl">${labels}</g>${bulbs}
       </g>
-      <path id="winLit" d="${win}" fill="#fff" fill-opacity=".12" style="display:none"/>
-      <path d="${band(0.2, 0.985, h * 1.8)} ${win}" fill="#000" fill-rule="evenodd"/>
-      <path d="${band(0.94, 1.08, h * 2.2)}" fill="#000"/>
+      <path id="winLit" d="" fill="#fff" fill-opacity=".14"/>
+      <path id="winDim" d="" fill="#000" fill-opacity=".55"/>
       ${line(-1)}${line(1)}
       <circle r=".2" fill="#000"/>
+      <g id="flap" transform="translate(1.1 0)"><path d="M-.4 0 L0 -.045 L0 .045 Z" fill="#fff" stroke="#636366" stroke-width=".003"/></g>
     </svg>`;
   }
   // `idle`: the title when the wheel stands with no result yet (v16: empty).
@@ -554,7 +571,10 @@
     // v16 "rest": the wheel stands, no result yet (no lit wedge, no title).
     const hold = sp.curve === "hold", rest = sp.curve === "rest";
     if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
-    const win0 = $("winLit"); if (win0) win0.style.display = "none";
+const lit0 = $("winLit"), dim0 = $("winDim"); if (lit0) lit0.setAttribute("d", ""); if (dim0) dim0.setAttribute("d", "");
+    const flap = $("flap"), segR = seg * Math.PI / 180, hw = segR * WIN_SHARE / 2;
+    // Direction: the spin's own; a hold (zero length) = against the last angle seen.
+    let dirOff = Math.sign(sp.to - sp.from) || (wheelLastOff !== null && sp.to !== wheelLastOff ? Math.sign(sp.to - wheelLastOff) : wheelDir), prevOff = null;
     let lastTitle = null;
     const show = (title) => { if (title !== lastTitle) { lastTitle = title; const t = $("wheelTicker"); if (t) t.textContent = title; } };
     const frame = () => {
@@ -562,11 +582,21 @@
       const off = sp.from + (sp.to - sp.from) * (sp.curve === "quad" ? quad(u) : quart(u));
       // Pointer on the right (90°, like the host's WheelLayout.left).
       if (disc) disc.style.transform = `rotate(${90 - off}deg)`;
+      if (hold && prevOff !== null && off !== prevOff) dirOff = Math.sign(off - prevOff);
+      prevOff = off; wheelDir = dirOff; wheelLastOff = off;
+      // Standing still (stopped / rest): the flapper straight, tip on the centre line.
+      const still = rest || (u >= 1 && !hold);
+      if (flap) flap.setAttribute("transform", `translate(1.1 0) rotate(${still ? 0 : flapAngle(off, seg, dirOff).toFixed(2)})`);
       const idx = Math.floor((((off % 360) + 360) % 360) / seg) % sp.fields.length;
       if (rest) { show(idle); return; }
       if (u < 1 || hold) { show(sp.fields[idx].title); if (u < 1) wheelRAF = requestAnimationFrame(frame); return; }
       // stopped: light the drawn wedge, show its name
-      const win = $("winLit"); if (win) win.style.display = "";
+      // Only the drawn wedge lit in the window, a neighbour dimmed (v18).
+      let a0 = ((sp.landed * seg - off) % 360 + 540) % 360 - 180;
+      const lo = Math.max(-hw, a0 * Math.PI / 180), hi = Math.min(hw, (a0 + seg) * Math.PI / 180);
+      const lit = $("winLit"), dim = $("winDim");
+      if (lit) lit.setAttribute("d", hi > lo ? band(0.24, 0.955, lo, hi) : "");
+      if (dim) dim.setAttribute("d", (lo > -hw ? band(0.24, 0.955, -hw, Math.min(lo, hw)) : "") + " " + (hi < hw ? band(0.24, 0.955, Math.max(hi, -hw), hw) : ""));
       show(sp.fields[sp.landed].title);
     };
     wheelRAF = requestAnimationFrame(frame);
