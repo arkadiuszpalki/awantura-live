@@ -297,7 +297,7 @@
       const key = String(s.spin.startedAt);
       if (stage.dataset.spin !== key) {
         stage.dataset.spin = key;
-        stage.innerHTML = `<div class="bar top">${cell(roundCell(s))}<div class="cell grow">${s.spin.free ? `<span class="k">DLA ATMOSFERY</span>` : ""}<span class="v led" id="wheelTicker"></span></div></div>
+        stage.innerHTML = `<div class="bar top">${cell(roundCell(s))}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
           <div class="wheel-area">${wheelSVG(s.spin)}</div>`;
         startWheel(s.spin);
       }
@@ -467,6 +467,8 @@
   // (StudioView's WheelLayout.bottom); the field under the pointer runs through the bar.
   let wheelRAF = 0;
   const quart = (u) => 1 - Math.pow(1 - u, 4);
+  // v15: a hand spin slows down with constant friction (ease-out quad).
+  const quad = (u) => 1 - (1 - u) * (1 - u);
   const TEAM_HEX = { blue: "#0a84ff", green: "#30d158", yellow: "#ffd60a" };
   function wedgeStyle(f, catIndex) {
     if (f.kind === "category") { const c = ["blue", "green", "yellow"][catIndex % 3]; return { fill: TEAM_HEX[c], ink: "#000" }; }
@@ -509,7 +511,7 @@
     let lastTitle = "";
     const frame = () => {
       const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
-      const off = sp.from + (sp.to - sp.from) * quart(u);
+      const off = sp.from + (sp.to - sp.from) * (sp.curve === "quad" ? quad(u) : quart(u));
       if (disc) disc.style.transform = `rotate(${-off}deg)`;
       const idx = Math.floor((((off % 360) + 360) % 360) / seg) % sp.fields.length;
       const title = u >= 1 ? sp.fields[sp.landed].title : sp.fields[idx].title;
