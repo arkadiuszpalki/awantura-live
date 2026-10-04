@@ -267,14 +267,14 @@
   function render() {
     const stage = $("stage"), s = state;
     if (!s) {
-      stage.dataset.spin = "";
+      stage.dataset.spin = ""; stage.dataset.sig = "";
       stage.innerHTML = `<div class="panel"><div class="msg dim"><span class="led" data-fit="css" data-min="12">AWANTURA O KASĘ</span></div>
         <div class="fine" id="tvInfo">ŁĄCZĘ… · KOD ${esc(code)}</div></div>`;
       fitAll(stage); return;
     }
     if (s.boxOpening) {
       // A black box opening at the end: full screen, drum roll (v13).
-      stage.dataset.spin = "";
+      stage.dataset.spin = ""; stage.dataset.sig = "";
       stopWheel();
       const b = s.boxOpening, name = esc(nameOf(s, b.owner));
       stage.innerHTML = barOf([{ k: "CZARNA SKRZYNKA", v: name, cls: `team ${tc(b.owner)}`, grow: true }], "top") +
@@ -286,7 +286,7 @@
       return;
     }
     if (Date.now() < leftUntil && s.phase === "question") {
-      stage.dataset.spin = "";
+      stage.dataset.spin = ""; stage.dataset.sig = "";
       stage.innerHTML = top(s) + `<div class="panel">${message(esc(leftText))}</div>`;
       fitAll(stage); tickClock();
       return;
@@ -294,16 +294,20 @@
     if (s.spin) {
       // The wheel turning on the host's phone: full screen here too. Same spin
       // = keep the running animation.
-      const key = String(s.spin.startedAt);
+      // v15b: same wheel (hand hold, catch, release) = keep it, only turn it.
+      const key = String(s.spin.startedAt), sig = s.spin.fields.map((f) => f.title).join("|");
       if (stage.dataset.spin !== key) {
-        stage.dataset.spin = key;
-        stage.innerHTML = `<div class="bar top">${cell(roundCell(s))}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
+        if (stage.dataset.sig !== sig) {
+          stage.dataset.sig = sig;
+          stage.innerHTML = `<div class="bar top">${cell(roundCell(s))}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
           <div class="wheel-area">${wheelSVG(s.spin)}</div>`;
+        }
+        stage.dataset.spin = key;
         startWheel(s.spin);
       }
       return;
     }
-    stage.dataset.spin = "";
+    stage.dataset.spin = ""; stage.dataset.sig = "";
     stopWheel();
     stage.innerHTML = top(s) + effects(s) + tiles(s) + `<div class="panel">${panel(s)}</div>`;
     tickClock();
@@ -508,6 +512,9 @@
     stopWheel();
     const disc = document.getElementById("disc"), seg = 360 / sp.fields.length;
     const t0 = sp.startedAt + skew, dur = sp.duration * 1000;
+    const hold = sp.curve === "hold";  // v15b: the host holds the wheel (≈10 updates/s)
+    if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
+    const win0 = $("winWedge"); if (win0) win0.setAttribute("d", "");
     let lastTitle = "";
     const frame = () => {
       const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
@@ -519,7 +526,7 @@
       if (u < 1) wheelRAF = requestAnimationFrame(frame);
       else {
         const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = $("winWedge");
-        if (w && win) win.setAttribute("d", w.getAttribute("d"));
+        if (w && win && !hold) win.setAttribute("d", w.getAttribute("d"));
       }
     };
     wheelRAF = requestAnimationFrame(frame);

@@ -355,11 +355,18 @@
     if (!picking && mine && s.spin) {
       // The wheel turning (or just stopped) on the host's phone: full screen here
       // too. Same spin = keep the running animation, only refresh the bar.
-      const key = String(s.spin.startedAt);
-      if (view.dataset.spin !== key) { view.dataset.spin = key; view.className = "screen plain wheel"; view.innerHTML = wheelScreen(s); startWheel(s.spin); }
+      // v15b: a new spin on the same wheel (hand hold, catch, release) keeps
+      // the drawn wheel and only turns it — no rebuild ~10× a second.
+      const key = String(s.spin.startedAt), sig = s.spin.fields.map((f) => f.title).join("|");
+      if (view.dataset.spin !== key) {
+        if (view.dataset.sig !== sig || !view.classList.contains("wheel")) {
+          view.dataset.sig = sig; view.className = "screen plain wheel"; view.innerHTML = wheelScreen(s);
+        }
+        view.dataset.spin = key; startWheel(s.spin);
+      }
       return;
     }
-    view.dataset.spin = "";
+    view.dataset.spin = ""; view.dataset.sig = "";
     stopWheel();
     // A black box opening at the end: full screen with the drum roll (v13).
     if (!picking && mine && s.boxOpening) {
@@ -718,6 +725,9 @@
     stopWheel();
     const disc = document.getElementById("disc"), seg = 360 / sp.fields.length;
     const t0 = sp.startedAt + skew, dur = sp.duration * 1000;
+    const hold = sp.curve === "hold";  // v15b: the host holds the wheel (≈10 updates/s)
+    if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
+    const win0 = document.getElementById("winWedge"); if (win0) win0.setAttribute("d", "");
     let lastTitle = "";
     const frame = () => {
       const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
@@ -734,7 +744,7 @@
       else {
         // stopped: light the drawn wedge, show its name
         const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = document.getElementById("winWedge");
-        if (w && win) win.setAttribute("d", w.getAttribute("d"));
+        if (w && win && !hold) win.setAttribute("d", w.getAttribute("d"));
         const t = document.getElementById("wheelTicker");
         if (t) t.textContent = sp.fields[sp.landed].title;
       }
