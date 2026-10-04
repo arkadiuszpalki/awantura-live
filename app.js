@@ -684,9 +684,23 @@
   const quart = (u) => 1 - Math.pow(1 - u, 4);
   // v15: a hand spin slows down with constant friction (ease-out quad).
   const quad = (u) => 1 - (1 - u) * (1 - u);
-  const TEAM_HEX = { blue: "#0a84ff", green: "#30d158", yellow: "#ffd60a" };
-  function wedgeStyle(f, catIndex) {
-    if (f.kind === "category") { const c = ["blue", "green", "yellow"][catIndex % 3]; return { fill: TEAM_HEX[c], ink: "#000" }; }
+  // v16 (Arek): category wedges are NOT the teams' colours — pink, orange,
+  // purple, mint in turn; neighbours (round the circle too) never match.
+  // Same rule as WheelColors.categoryColors in the app.
+  const WHEEL_HEX = ["#ff375f", "#ff9f0a", "#bf5af2", "#63e6e2"];
+  function wheelColors(fields) {
+    const n = fields.length, out = new Array(n).fill(null);
+    let k = 0;
+    fields.forEach((f, i) => { if (f.kind === "category") out[i] = k++ % 4; });
+    fields.forEach((f, i) => {
+      if (f.kind !== "category" || n < 2) return;
+      const prev = out[(i - 1 + n) % n], next = out[(i + 1) % n];
+      if (out[i] === prev || out[i] === next) out[i] = [0, 1, 2, 3].find((c) => c !== prev && c !== next);
+    });
+    return out;
+  }
+  function wedgeStyle(f, color) {
+    if (f.kind === "category") return { fill: WHEEL_HEX[color || 0], ink: "#000" };
     if (f.kind === "hint") return { fill: "#fff", ink: "#000" };
     if (f.kind === "blackBox") return { fill: "#050505", ink: "#fff", box: true };
     return { fill: "#000", ink: "#fff" };  // 1 NA 1 (Masters' black)
@@ -694,9 +708,10 @@
   function wheelSVG(sp) {
     const n = sp.fields.length, seg = 360 / n, R = 1, rim = 0.93;
     const pt = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [Math.cos(a) * r, Math.sin(a) * r]; };
-    let cat = 0, wedges = "", labels = "", bulbs = "";
+    const colors = wheelColors(sp.fields);
+    let wedges = "", labels = "", bulbs = "";
     sp.fields.forEach((f, i) => {
-      const st = wedgeStyle(f, cat); if (f.kind === "category") cat++;
+      const st = wedgeStyle(f, colors[i]);
       const [x0, y0] = pt(i * seg, rim), [x1, y1] = pt((i + 1) * seg, rim);
       wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="${st.fill}" stroke="#1c1c1e" stroke-width=".006" data-i="${i}"/>`;
       if (st.box) wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="none" stroke="#fff" stroke-width=".006" transform="scale(.97)"/>`;
