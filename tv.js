@@ -295,16 +295,21 @@
       // The wheel turning on the host's phone: full screen here too. Same spin
       // = keep the running animation.
       // v15b: same wheel (hand hold, catch, release) = keep it, only turn it.
+      // v16: the wheel from the side, full screen; RUNDA | field on top and the
+      // accounts at the bottom float over it (solid black, 1 px frame).
       const key = String(s.spin.startedAt), sig = s.spin.fields.map((f) => f.title).join("|");
-      if (stage.dataset.spin !== key) {
-        if (stage.dataset.sig !== sig) {
-          stage.dataset.sig = sig;
-          stage.innerHTML = `<div class="bar top">${cell(roundCell(s))}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
-          <div class="wheel-area">${wheelSVG(s.spin)}</div>`;
-        }
-        stage.dataset.spin = key;
-        startWheel(s.spin);
+      if (stage.dataset.sig !== sig) {
+        stage.dataset.sig = sig; stage.dataset.spin = "";
+        stage.innerHTML = `<div class="wheel-area">${wheelSVG(s.spin)}
+          <div class="bar wtop">${cell({ ...roundCell(s), attrs: 'id="wround"' })}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
+          <div class="wfoot" id="wfoot">${wheelFoot(s)}</div></div>`;
+        fitAll(stage); settleNums(stage);
+      } else {
+        const f = $("wfoot"), r = $("wround");
+        if (f) { f.innerHTML = wheelFoot(s); fitAll(f); settleNums(f); }
+        if (r) r.outerHTML = cell({ ...roundCell(s), attrs: 'id="wround"' });
       }
+      if (stage.dataset.spin !== key) { stage.dataset.spin = key; startWheel(s.spin, s.fieldTitle || ""); }
       return;
     }
     stage.dataset.spin = ""; stage.dataset.sig = "";
@@ -313,6 +318,14 @@
     tickClock();
     fitAll(stage);
     settleNums(stage);
+  }
+
+  // Accounts under the wheel: every playing team on its colour + PULA (v16).
+  function wheelFoot(s) {
+    const cells = s.teams.filter((t) => t.playing).map((t) => t.bankrupt
+      ? { v: "BANKRUT", cls: `team out ${tc(t.id)}` }
+      : { v: t.balance, n: "t-" + t.id, cls: `team ${tc(t.id)}` });
+    return barOf([...cells, { k: "PULA", v: s.pot, n: "pot" }]);
   }
 
   // Top bar: RUNDA · category · PULA — during a question DO WYGRANIA on the
@@ -360,7 +373,7 @@
       case "question": return s.question ? question(s) : message("AWANTURA O KASĘ");
       case "roundResult": return s.result ? result(s) : message(esc(s.fieldTitle || "AWANTURA O KASĘ"));
       case "stageEnd": case "gameEnd": return end(s);
-      case "wheel": return s.fieldTitle ? message(esc(s.fieldTitle)) : message("ZARAZ LOSUJEMY", true);
+      case "wheel": return s.fieldTitle ? message(esc(s.fieldTitle)) : message("KOŁO", true);
       default: return message("AWANTURA O KASĘ");
     }
   }
@@ -404,7 +417,8 @@
     return `${q.hintOffer ? barOf([{ v: `PODPOWIEDŹ ZA ${q.hintOffer} ZŁ?`, cls: "hl" }], "sub haggle") : ""}
       <div class="qcard ${tc(id)}">
         ${q.duel ? `<div class="who">1 NA 1 · KTO PIERWSZY, TEN ODPOWIADA</div>` : ""}
-        <div class="qtext"><span data-fit="css" data-min="12">${esc(q.text)}</span></div>
+        ${q.waiting ? `<div class="qtext qwait"><span class="led" data-fit="css" data-min="12">PYTANIE ZA CHWILĘ</span></div>`
+          : `<div class="qtext"><span data-fit="css" data-min="12">${esc(q.text)}</span></div>`}
         ${answers}
       </div>`;
   }
@@ -497,36 +511,42 @@
       const [x, y] = pt(k * seg / 2, 0.965);
       bulbs += `<circle cx="${x}" cy="${y}" r=".014" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
     }
-    return `<svg class="wheel-svg" viewBox="-1.08 -1.14 2.16 1.22" preserveAspectRatio="xMidYMax meet">
+    // v16 (Arek's pattern): the wheel seen from the side — big, the hub at the
+    // left edge, the pointer on the right pointing at it, flat (no glow).
+    return `<svg class="wheel-svg" viewBox="-.46 -.59 2.09 1.18" preserveAspectRatio="xMinYMid meet">
       <g id="disc">
         <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
         ${wedges}<g class="wl">${labels}</g>${bulbs}
         <path id="winWedge" d="" fill="none" stroke="#fff" stroke-width=".012"/>
       </g>
-      <circle r=".2" fill="#000"/>
-      <path d="M-.065 -1.13 L.065 -1.13 L0 -.95 Z" fill="#fff"/>
+      <circle r=".19" fill="#000"/>
+      <path d="M.935 0 L1.14 -.07 L1.14 .07 Z" fill="#fff"/>
     </svg>`;
   }
-  function startWheel(sp) {
+  // `idle`: the title when the wheel stands with no result yet (v16: empty).
+  function startWheel(sp, idle = "") {
     stopWheel();
-    const disc = document.getElementById("disc"), seg = 360 / sp.fields.length;
+    const disc = $("disc"), seg = 360 / sp.fields.length;
     const t0 = sp.startedAt + skew, dur = sp.duration * 1000;
-    const hold = sp.curve === "hold";  // v15b: the host holds the wheel (≈10 updates/s)
+    // v15b "hold": the host holds the wheel (≈10 updates/s, eased by CSS);
+    // v16 "rest": the wheel stands, no result yet (no lit wedge, no title).
+    const hold = sp.curve === "hold", rest = sp.curve === "rest";
     if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
     const win0 = $("winWedge"); if (win0) win0.setAttribute("d", "");
-    let lastTitle = "";
+    let lastTitle = null;
+    const show = (title) => { if (title !== lastTitle) { lastTitle = title; const t = $("wheelTicker"); if (t) t.textContent = title; } };
     const frame = () => {
       const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
       const off = sp.from + (sp.to - sp.from) * (sp.curve === "quad" ? quad(u) : quart(u));
-      if (disc) disc.style.transform = `rotate(${-off}deg)`;
+      // Pointer on the right (90°, like the host's WheelLayout.left).
+      if (disc) disc.style.transform = `rotate(${90 - off}deg)`;
       const idx = Math.floor((((off % 360) + 360) % 360) / seg) % sp.fields.length;
-      const title = u >= 1 ? sp.fields[sp.landed].title : sp.fields[idx].title;
-      if (title !== lastTitle) { lastTitle = title; const t = $("wheelTicker"); if (t) t.textContent = title; }
-      if (u < 1) wheelRAF = requestAnimationFrame(frame);
-      else {
-        const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = $("winWedge");
-        if (w && win && !hold) win.setAttribute("d", w.getAttribute("d"));
-      }
+      if (rest) { show(idle); return; }
+      if (u < 1 || hold) { show(sp.fields[idx].title); if (u < 1) wheelRAF = requestAnimationFrame(frame); return; }
+      // stopped: light the drawn wedge, show its name
+      const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = $("winWedge");
+      if (w && win) win.setAttribute("d", w.getAttribute("d"));
+      show(sp.fields[sp.landed].title);
     };
     wheelRAF = requestAnimationFrame(frame);
   }

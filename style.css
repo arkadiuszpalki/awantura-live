@@ -269,3 +269,17 @@ button { font: inherit; color: inherit; text-transform: inherit; letter-spacing:
 .box-open .hero { gap: 10px; }
 .box-open .led.drum { font-size: clamp(60px, 30vh, 160px); text-shadow: var(--glow); animation: blink .3s infinite; }
 .box-open .amount .led { text-shadow: var(--glow); }
+/* v16: before START CZASU the question text is not sent — LED "PYTANIE ZA CHWILĘ". */
+.qtext.qwait [data-fit] { font-family: "LED", ui-monospace, monospace; font-weight: 400; letter-spacing: .05em; }
+/* v16 (Arek's pattern): the wheel seen from the side fills the screen; ONE bar
+   on top (RUNDA | field) and the accounts at the bottom float over it — solid
+   black, 1 px frame, flat. */
+.screen.wheel .wheel-area, .stage > .wheel-area { position: relative; display: block; }
+.wheel-area > .wheel-svg { position: absolute; inset: 0; }
+.wheel-area > .wtop, .wheel-area > .wfoot { position: absolute; z-index: 1;
+  left: calc(max(10px, var(--sal)) + 1.5%); right: calc(max(10px, var(--sar)) + 1.5%); }
+.wheel-area > .wtop { top: calc(max(8px, var(--sat)) + 2%); height: var(--bh); border: 1px solid var(--line); }
+.wheel-area > .wfoot { bottom: calc(max(8px, var(--sab)) + 2%); }
+.wheel-area > .wfoot > .bar { height: var(--bh); border: 1px solid var(--line); }
+.wheel-area .bar > .cell:first-child { padding-left: 12px; }
+.wheel-area .bar > .cell:last-child { padding-right: 12px; }

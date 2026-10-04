@@ -358,12 +358,11 @@
       // v15b: a new spin on the same wheel (hand hold, catch, release) keeps
       // the drawn wheel and only turns it — no rebuild ~10× a second.
       const key = String(s.spin.startedAt), sig = s.spin.fields.map((f) => f.title).join("|");
-      if (view.dataset.spin !== key) {
-        if (view.dataset.sig !== sig || !view.classList.contains("wheel")) {
-          view.dataset.sig = sig; view.className = "screen plain wheel"; view.innerHTML = wheelScreen(s);
-        }
-        view.dataset.spin = key; startWheel(s.spin);
-      }
+      if (view.dataset.sig !== sig || !view.classList.contains("wheel")) {
+        view.dataset.sig = sig; view.dataset.spin = ""; view.className = "screen plain wheel"; view.innerHTML = wheelScreen(s);
+        fitAll(view); settleNums(view);
+      } else refreshWheelBars(s);
+      if (view.dataset.spin !== key) { view.dataset.spin = key; startWheel(s.spin, s.fieldTitle || ""); }
       return;
     }
     view.dataset.spin = ""; view.dataset.sig = "";
@@ -446,7 +445,7 @@
       return `${bar(s, others)}${effects(s)}
         <div class="hero">
           <div class="mine-label">${s.fieldTitle ? "WYLOSOWANE" : "FINAŁ Z MISTRZAMI"}</div>
-          <div class="amount"><span class="led" data-fit="200" data-min="30" data-hbox="hero">${esc(s.fieldTitle || "ZARAZ LOSUJEMY")}</span></div>
+          <div class="amount"><span class="led" data-fit="200" data-min="30" data-hbox="hero">${esc(s.fieldTitle || "KOŁO")}</span></div>
           <div class="zl"></div>
         </div>
         ${cells.length ? barOf(cells, "foot") : ""}`;
@@ -603,7 +602,9 @@
   function question(s) {
     const q = s.question;
     const id = q.duel ? null : q.team;
-    const who = q.duel ? `1 NA 1 · ${esc(q.category)} · KTO PIERWSZY, TEN ODPOWIADA` : id === mine ? "ODPOWIADACIE!" : spectator(s) ? "KIBICUJECIE" : "";
+    let who = q.duel ? `1 NA 1 · ${esc(q.category)} · KTO PIERWSZY, TEN ODPOWIADA` : id === mine ? "ODPOWIADACIE!" : spectator(s) ? "KIBICUJECIE" : "";
+    // v16: before START CZASU the category goes with "PYTANIE ZA CHWILĘ".
+    if (q.waiting && !q.duel) who = who ? `${esc(q.category)} · ${who}` : esc(q.category);
     const answers = q.answers
       ? `<div class="answers">${q.answers.map((a, i) => `<div class="a"><span class="chip led">${"ABCD"[i]}</span><span class="tx">${esc(a)}</span></div>`).join("")}</div>` : "";
     const haggle = q.hintOffer ? barOf([{ v: `PODPOWIEDŹ ZA ${q.hintOffer} ZŁ?`, cls: "hl" }], "haggle") : "";
@@ -615,7 +616,8 @@
       ${effects(s)}${haggle}
       <div class="q ${tc(id)} ${q.duel ? "duel" : ""}">
         ${who ? `<div class="who ${id === mine && !q.duel ? "mine" : ""}">${who}</div>` : ""}
-        <div class="qtext"><span data-fit="90" data-min="15">${esc(q.text)}</span></div>
+        ${q.waiting ? `<div class="qtext qwait"><span class="led" data-fit="90" data-min="15">PYTANIE ZA CHWILĘ</span></div>`
+          : `<div class="qtext"><span data-fit="90" data-min="15">${esc(q.text)}</span></div>`}
         ${answers}
       </div>`;
   }
@@ -706,47 +708,60 @@
       const [x, y] = pt(k * seg / 2, 0.965);
       bulbs += `<circle cx="${x}" cy="${y}" r=".014" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
     }
-    return `<svg class="wheel-svg" viewBox="-1.08 -1.14 2.16 1.22" preserveAspectRatio="xMidYMax meet">
+    // v16 (Arek's pattern): the wheel seen from the side — big, the hub at the
+    // left edge, the pointer on the right pointing at it, flat (no glow).
+    return `<svg class="wheel-svg" viewBox="-.46 -.59 2.09 1.18" preserveAspectRatio="xMinYMid meet">
       <g id="disc">
         <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
         ${wedges}<g class="wl">${labels}</g>${bulbs}
         <path id="winWedge" d="" fill="none" stroke="#fff" stroke-width=".012"/>
       </g>
-      <circle r=".2" fill="#000"/>
-      <path d="M-.065 -1.13 L.065 -1.13 L0 -.95 Z" fill="#fff"/>
+      <circle r=".19" fill="#000"/>
+      <path d="M.935 0 L1.14 -.07 L1.14 .07 Z" fill="#fff"/>
     </svg>`;
   }
+  // v16: the wheel fills the screen; ONE bar on top (RUNDA | the field) and
+  // the accounts at the bottom (every team + PULA, like the host's strip),
+  // both solid black with a 1 px frame, floating over the wheel.
   function wheelScreen(s) {
-    return `<div class="bar top">${cell(roundCell(s))}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
-      <div class="wheel-area">${wheelSVG(s.spin)}</div>`;
+    return `<div class="wheel-area">${wheelSVG(s.spin)}
+      <div class="bar wtop">${cell({ ...roundCell(s), attrs: 'id="wround"' })}<div class="cell grow"><span class="v led" id="wheelTicker"></span></div></div>
+      <div class="wfoot" id="wfoot">${wheelFoot(s)}</div></div>`;
   }
-  function startWheel(sp) {
+  function wheelFoot(s) {
+    const teams = teamsOf(s).filter((t) => t.id !== "masters" || s.stage === "final").filter((t) => s.stage !== "final" || t.playing);
+    return barOf([...teams.map((t) => ({ ...teamCell(t), grow: true })), { k: "PULA", v: s.pot, n: "pot" }]);
+  }
+  // Same wheel, new snapshot (accounts, round): refresh the bars only.
+  function refreshWheelBars(s) {
+    const f = document.getElementById("wfoot"), r = document.getElementById("wround");
+    if (f) { f.innerHTML = wheelFoot(s); fitAll(f); settleNums(f); }
+    if (r) r.outerHTML = cell({ ...roundCell(s), attrs: 'id="wround"' });
+  }
+  // `idle`: the title when the wheel stands with no result yet (v16: empty).
+  function startWheel(sp, idle = "") {
     stopWheel();
     const disc = document.getElementById("disc"), seg = 360 / sp.fields.length;
     const t0 = sp.startedAt + skew, dur = sp.duration * 1000;
-    const hold = sp.curve === "hold";  // v15b: the host holds the wheel (≈10 updates/s)
+    // v15b "hold": the host holds the wheel (≈10 updates/s, eased by CSS);
+    // v16 "rest": the wheel stands, no result yet (no lit wedge, no title).
+    const hold = sp.curve === "hold", rest = sp.curve === "rest";
     if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
     const win0 = document.getElementById("winWedge"); if (win0) win0.setAttribute("d", "");
-    let lastTitle = "";
+    let lastTitle = null;
+    const show = (title) => { if (title !== lastTitle) { lastTitle = title; const t = document.getElementById("wheelTicker"); if (t) t.textContent = title; } };
     const frame = () => {
       const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
       const off = sp.from + (sp.to - sp.from) * (sp.curve === "quad" ? quad(u) : quart(u));
-      if (disc) disc.style.transform = `rotate(${-off}deg)`;
-      const idx = ((Math.floor((((off % 360) + 360) % 360) / seg)) % sp.fields.length);
-      const title = sp.fields[idx].title;
-      if (title !== lastTitle) {
-        lastTitle = title;
-        const t = document.getElementById("wheelTicker");
-        if (t) t.textContent = title;
-      }
-      if (u < 1) wheelRAF = requestAnimationFrame(frame);
-      else {
-        // stopped: light the drawn wedge, show its name
-        const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = document.getElementById("winWedge");
-        if (w && win && !hold) win.setAttribute("d", w.getAttribute("d"));
-        const t = document.getElementById("wheelTicker");
-        if (t) t.textContent = sp.fields[sp.landed].title;
-      }
+      // Pointer on the right (90°, like the host's WheelLayout.left).
+      if (disc) disc.style.transform = `rotate(${90 - off}deg)`;
+      const idx = Math.floor((((off % 360) + 360) % 360) / seg) % sp.fields.length;
+      if (rest) { show(idle); return; }
+      if (u < 1 || hold) { show(sp.fields[idx].title); if (u < 1) wheelRAF = requestAnimationFrame(frame); return; }
+      // stopped: light the drawn wedge, show its name
+      const w = document.querySelector(`#disc path[data-i="${sp.landed}"]`), win = document.getElementById("winWedge");
+      if (w && win) win.setAttribute("d", w.getAttribute("d"));
+      show(sp.fields[sp.landed].title);
     };
     wheelRAF = requestAnimationFrame(frame);
   }

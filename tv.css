@@ -111,3 +111,10 @@
 .boxopen .val { max-width: 100%; display: flex; justify-content: center; }
 .boxopen .val .led { font-size: calc(120 * var(--u)); text-shadow: var(--glow); white-space: normal; text-align: center; }
 .boxopen .led.drum { font-size: calc(200 * var(--u)); animation: blink .3s infinite; }
+.qcard .qtext.qwait [data-fit] { font-family: "LED", ui-monospace, monospace; font-weight: 400; letter-spacing: .05em; }
+/* v16: wheel bars float 48 px (1080p) from the edges. */
+.tv .wheel-area > .wtop, .tv .wheel-area > .wfoot { left: calc(48 * var(--u)); right: calc(48 * var(--u)); }
+.tv .wheel-area > .wtop { top: calc(48 * var(--u)); }
+.tv .wheel-area > .wfoot { bottom: calc(48 * var(--u)); }
+.tv .wheel-area .bar > .cell:first-child { padding-left: calc(28 * var(--u)); }
+.tv .wheel-area .bar > .cell:last-child { padding-right: calc(28 * var(--u)); }
