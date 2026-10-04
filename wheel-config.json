@@ -1,0 +1,28 @@
+{
+  "tv": {
+    "radius": 1.15,
+    "hubX": 0.053,
+    "hubY": 0.5,
+    "pointer": 90,
+    "flapLength": 0.48,
+    "flapWidth": 0.045,
+    "windowShare": 0.72,
+    "lineWidth": 0.006,
+    "labelScale": 1,
+    "labelGap": 0.03,
+    "boltSize": 0.012
+  },
+  "phone": {
+    "radius": 1.15,
+    "hubX": 0.053,
+    "hubY": 0.5,
+    "pointer": 90,
+    "flapLength": 0.48,
+    "flapWidth": 0.045,
+    "windowShare": 0.72,
+    "lineWidth": 0.006,
+    "labelScale": 1,
+    "labelGap": 0.03,
+    "boltSize": 0.012
+  }
+}

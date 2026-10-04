@@ -508,20 +508,23 @@
     const p = (r, t) => `${(Math.cos(t) * r).toFixed(4)} ${(Math.sin(t) * r).toFixed(4)}`;
     return `M${p(r1, a)} A${r1} ${r1} 0 0 1 ${p(r1, b)} L${p(r0, b)} A${r0} ${r0} 0 0 0 ${p(r0, a)} Z`;
   }
-  // The flapper (v18): same formula as WheelFlapper in the app — a peg at every
-  // wedge edge pushes it, after the peg it snaps back. dirOff: +1 when the
-  // offset (disc angle under the pointer) grows.
-  function flapAngle(off, seg, dirOff) {
-    if (!seg || !dirOff) return 0;
-    let m = off % seg; if (m < 0) m += seg;
-    const u = 1 - (dirOff < 0 ? m : seg - m) / seg, push = 0.35, back = 0.18;
-    let prof = 0;
-    if (u >= 1 - push) prof = (u - (1 - push)) / push;
-    else if (u < back) { const t = u / back; prof = (1 - t) - 0.25 * Math.sin(t * Math.PI); }
-    return 18 * prof * (dirOff < 0 ? -1 : 1);
-  }
-  const WIN_SHARE = 0.72;
-  let wheelDir = -1, wheelLastOff = null;
+  // v18b: the wheel's look comes from web/live/wheel-config.json ("tv"
+  // part), tuned in the sandbox panel (KOŁO); the panel also sends changes
+  // live (postMessage from the sandbox page). Defaults = the v18 look.
+  const WHEEL_DEFAULT = { radius: 1.15, hubX: 0.053, hubY: 0.5, pointer: 90, flapLength: 0.48, flapWidth: 0.045,
+    windowShare: 0.72, lineWidth: 0.006, labelScale: 1, labelGap: 0.03, boltSize: 0.012 };
+  let WCFG = { ...WHEEL_DEFAULT };
+  const useWheelConfig = (all) => {
+    if (!all || typeof all !== "object" || typeof all.tv !== "object") return;
+    const next = { ...WHEEL_DEFAULT };
+    for (const k of Object.keys(WHEEL_DEFAULT)) if (Number.isFinite(+all.tv[k])) next[k] = +all.tv[k];
+    WCFG = next;
+    const view = $("stage");
+    if (view && state) { stage.dataset.sig = ""; stage.dataset.spin = ""; render(); }
+  };
+  fetch("wheel-config.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then(useWheelConfig).catch(() => {});
+  addEventListener("message", (e) => { if (e.source === parent && e.data && e.data.type === "awantura-wheel") useWheelConfig(e.data.cfg); });
+  addEventListener("resize", () => { const view = $("stage"); if (view && view.dataset.sig) { stage.dataset.sig = ""; stage.dataset.spin = ""; render(); } });
   function wheelSVG(sp) {
     const n = sp.fields.length, seg = 360 / n, rim = 0.93, segRad = seg * Math.PI / 180;
     const pt = (deg, r) => { const a = (deg - 90) * Math.PI / 180; return [Math.cos(a) * r, Math.sin(a) * r]; };
@@ -529,7 +532,7 @@
     let wedges = "", labels = "", bulbs = "";
     // Labels like the TV: one common size (the median fit), smaller only when
     // a long title would not fit its narrow wedge. LED glyph ≈ 0.70 em wide.
-    const inner = 0.23, outer = rim - 0.03, sh = Math.sin(segRad / 2), kk = 0.6;
+    const inner = 0.23, outer = rim - WCFG.labelGap, sh = Math.sin(segRad / 2), kk = 0.6;
     const fit = (t) => { const m = t.length * 0.70; return Math.min(0.075, (outer - inner) / m, 2 * outer * sh * kk / (1 + 2 * m * sh * kk)); };
     const sizes = sp.fields.map((f) => fit(f.title)), common = [...sizes].sort((a, b) => a - b)[Math.floor(sizes.length / 2)];
     sp.fields.forEach((f, i) => {
@@ -537,29 +540,37 @@
       const [x0, y0] = pt(i * seg, rim), [x1, y1] = pt((i + 1) * seg, rim);
       wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="${st.fill}" stroke="#1c1c1e" stroke-width=".004" data-i="${i}"/>`;
       if (st.box) wedges += `<path d="M0 0 L${x0} ${y0} A${rim} ${rim} 0 0 1 ${x1} ${y1} Z" fill="none" stroke="#fff" stroke-width=".005" transform="scale(.97)"/>`;
-      const mid = i * seg + seg / 2, size = Math.min(common, sizes[i]);
+      const mid = i * seg + seg / 2, size = Math.min(common, sizes[i]) * WCFG.labelScale;
       labels += `<text transform="rotate(${mid - 90}) translate(${outer} 0)" fill="${st.ink}" font-size="${size.toFixed(4)}" text-anchor="end" dominant-baseline="central">${esc(f.title)}</text>`;
     });
     for (let k = 0; k < n; k++) {
       const [x, y] = pt(k * seg, 0.965);
-      bulbs += `<circle cx="${x}" cy="${y}" r=".012" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
+      bulbs += `<circle cx="${x}" cy="${y}" r="${WCFG.boltSize}" fill="${k % 2 ? "#8e8e93" : "#f2f2f7"}"/>`;
     }
-    const h = segRad * WIN_SHARE / 2;
-    const line = (s) => { const a = s * h; return `<line x1="${Math.cos(a) * .26}" y1="${Math.sin(a) * .26}" x2="${Math.cos(a) * .95}" y2="${Math.sin(a) * .95}" stroke="#ffe45c" stroke-width=".006"/>`; };
+    const h = segRad * WCFG.windowShare / 2;
+    const line = (s) => { const a = s * h; return `<line x1="${Math.cos(a) * .26}" y1="${Math.sin(a) * .26}" x2="${Math.cos(a) * .95}" y2="${Math.sin(a) * .95}" stroke="#ffe45c" stroke-width="${WCFG.lineWidth}"/>`; };
+    // Viewport from the config: radius in screen heights, hub position as a
+    // share of the screen (the real aspect of this screen).
+    const root = $("stage"), aspect = root && root.clientHeight ? root.clientWidth / root.clientHeight : 16 / 9;
+    const vh = 1 / WCFG.radius, vw = vh * aspect;
+    const vb = `${(-WCFG.hubX * vw).toFixed(4)} ${(-WCFG.hubY * vh).toFixed(4)} ${vw.toFixed(4)} ${vh.toFixed(4)}`;
+    const fl = WCFG.flapLength, fw = WCFG.flapWidth;
     // The wheel seen from the side, zoomed in (v18). Pointer (Arek's final
     // call): no fork — two yellow LED lines mark a window 72 % of a wedge
     // (with a result: the drawn wedge lit, a neighbour dimmed) and a long
-    // white flapper whose tip reaches into the field. Flat — no glow.
-    return `<svg class="wheel-svg" viewBox="-.082 -.435 1.546 .87" preserveAspectRatio="xMinYMid meet">
+    // static white arrow (v19) whose tip reaches into the field. Flat.
+    return `<svg class="wheel-svg" viewBox="${vb}" preserveAspectRatio="xMidYMid meet">
       <g id="disc">
         <circle r="1" fill="#1c1c1e" stroke="#636366" stroke-width=".004"/>
         ${wedges}<g class="wl">${labels}</g>${bulbs}
       </g>
-      <path id="winLit" d="" fill="#fff" fill-opacity=".14"/>
-      <path id="winDim" d="" fill="#000" fill-opacity=".55"/>
-      ${line(-1)}${line(1)}
+      <g transform="rotate(${WCFG.pointer - 90})">
+        <path id="winLit" d="" fill="#fff" fill-opacity=".14"/>
+        <path id="winDim" d="" fill="#000" fill-opacity=".55"/>
+        ${line(-1)}${line(1)}
+        <g transform="translate(1.1 0)"><path d="M${-fl} 0 L0 ${-fw} L0 ${fw} Z" fill="#fff" stroke="#636366" stroke-width=".003"/></g>
+      </g>
       <circle r=".2" fill="#000"/>
-      <g id="flap" transform="translate(1.1 0)"><path d="M-.4 0 L0 -.045 L0 .045 Z" fill="#fff" stroke="#636366" stroke-width=".003"/></g>
     </svg>`;
   }
   // `idle`: the title when the wheel stands with no result yet (v16: empty).
@@ -572,21 +583,14 @@
     const hold = sp.curve === "hold", rest = sp.curve === "rest";
     if (disc) disc.style.transition = hold ? "transform 120ms linear" : "none";
 const lit0 = $("winLit"), dim0 = $("winDim"); if (lit0) lit0.setAttribute("d", ""); if (dim0) dim0.setAttribute("d", "");
-    const flap = $("flap"), segR = seg * Math.PI / 180, hw = segR * WIN_SHARE / 2;
-    // Direction: the spin's own; a hold (zero length) = against the last angle seen.
-    let dirOff = Math.sign(sp.to - sp.from) || (wheelLastOff !== null && sp.to !== wheelLastOff ? Math.sign(sp.to - wheelLastOff) : wheelDir), prevOff = null;
+    const segR = seg * Math.PI / 180, hw = segR * WCFG.windowShare / 2;
     let lastTitle = null;
     const show = (title) => { if (title !== lastTitle) { lastTitle = title; const t = $("wheelTicker"); if (t) t.textContent = title; } };
     const frame = () => {
       const u = Math.max(0, Math.min(1, (Date.now() - t0) / dur));
       const off = sp.from + (sp.to - sp.from) * (sp.curve === "quad" ? quad(u) : quart(u));
       // Pointer on the right (90°, like the host's WheelLayout.left).
-      if (disc) disc.style.transform = `rotate(${90 - off}deg)`;
-      if (hold && prevOff !== null && off !== prevOff) dirOff = Math.sign(off - prevOff);
-      prevOff = off; wheelDir = dirOff; wheelLastOff = off;
-      // Standing still (stopped / rest): the flapper straight, tip on the centre line.
-      const still = rest || (u >= 1 && !hold);
-      if (flap) flap.setAttribute("transform", `translate(1.1 0) rotate(${still ? 0 : flapAngle(off, seg, dirOff).toFixed(2)})`);
+      if (disc) disc.style.transform = `rotate(${WCFG.pointer - off}deg)`;
       const idx = Math.floor((((off % 360) + 360) % 360) / seg) % sp.fields.length;
       if (rest) { show(idle); return; }
       if (u < 1 || hold) { show(sp.fields[idx].title); if (u < 1) wheelRAF = requestAnimationFrame(frame); return; }
